@@ -1,4 +1,7 @@
 import random
+import json
+from types import SimpleNamespace
+import os
 from typing import Callable
 
 import gymnasium as gym
@@ -13,11 +16,12 @@ def evaluate(
     eval_episode: int,
     run_name: str,
     Model: torch.nn.Module,
+    video_path: str,
     device: torch.device = torch.device("cpu"),
     epsilon: float = 0.05,
-    capture_video: bool = True
+    capture_video: bool = True,
 ):
-    envs = gym.vector.SyncVectorEnv([make_env(env_id, 0, 0, capture_video, run_name)])
+    envs = gym.vector.SyncVectorEnv([make_env(env_id, 0, 0, capture_video, run_name,video_path)])
     model = Model(envs).to(device)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
@@ -43,19 +47,36 @@ def evaluate(
 
 
 if __name__ == "__main__":
-    from huggingface_hub import hf_hub_download
 
     from dqn_atari import QNetwork, make_env
 
-    model_path = hf_hub_download(repo_id="cleanrl/CartPole-v1-dqn-seed1", filename="dqn.cleanrl_model")
+    with open('config.json') as f:
+        args_dict = json.load(f)
+
+    args = SimpleNamespace(**args_dict)
+
+    run_name = None
+
+    for folder_name in os.listdir(f"runs/{args.wandb_project_name}"):
+        run_name = folder_name
+
+    assert run_name is not None, "No model found"
+
+    print(f"Using model from {run_name}")
+
+    model_path = f"runs/{args.wandb_project_name}/{run_name}/{args.exp_name}.pth"
     # model_path = ".pth"
-    evaluate(
+    episodic_returns = evaluate(
         model_path,
         make_env,
-        "CartPole-v1",
-        eval_episode=0,
-        run_name=f"eval",
+        args.env_id,
+        eval_episode=10,
+        run_name=f"{run_name}-eval",
         Model=QNetwork,
-        device="cpu",
+        video_path=args.video_path,
+        device="cuda" if torch.cuda.is_available() and args.cuda else "cpu",
+        epsilon=0,
         capture_video=False
-    )           
+    )
+
+    print(f"mean episodic return={np.mean(episodic_returns)}")

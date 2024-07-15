@@ -21,11 +21,11 @@ from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
 
-def make_env(env_id, seed, idx, capture_video, run_name):
+def make_env(env_id, seed, idx, capture_video, run_name, video_path):
     def thunk():
         if capture_video and idx == 0:
             env = gym.make(env_id, render_mode="rgb_array")
-            env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
+            env = gym.wrappers.RecordVideo(env, f"{video_path}/{run_name}")
         else:
             env = gym.make(env_id)
 
@@ -117,7 +117,7 @@ if __name__ == "__main__":
     print(f"using device {device}")
 
     envs = gym.vector.SyncVectorEnv(
-        [make_env(args.env_id, args.seed + i, i, args.capture_video, run_name) for i in range(args.num_envs)]
+        [make_env(args.env_id, args.seed + i, i, args.capture_video, run_name, args.video_path) for i in range(args.num_envs)]
     )
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
@@ -203,6 +203,7 @@ if __name__ == "__main__":
             eval_episode=10,
             run_name=f"{run_name}-eval",
             Model=QNetwork,
+            video_path=args.video_path,
             device=device,
             epsilon=0,
         )
