@@ -3,6 +3,7 @@ import json
 from types import SimpleNamespace
 import os
 from typing import Callable
+import argparse
 
 import gymnasium as gym
 import numpy as np
@@ -45,13 +46,28 @@ def evaluate(
 
     return episodic_returns
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="DQN evaluation")
+    parser.add_argument("--config", type=str, default="config.json", help="config file")
+    args = parser.parse_args()
+    return args
 
 if __name__ == "__main__":
 
     from dqn_atari import QNetwork, make_env
 
-    with open('config.json') as f:
-        args_dict = json.load(f)
+    cfg = parse_args().config
+
+    try:
+        with open(cfg) as f:
+            args_dict = json.load(f)
+
+    except FileNotFoundError:
+        print("Config file not found")
+        exit(1)
+
+    print("Loaded config: ", cfg)
+    print(args_dict)
 
     args = SimpleNamespace(**args_dict)
 
@@ -69,7 +85,7 @@ if __name__ == "__main__":
     episodic_returns = evaluate(
         model_path,
         make_env,
-        args.env_id,
+        f"{args.wandb_project_name}/{args.exp_name}",
         eval_episode=10,
         run_name=f"{run_name}-eval",
         Model=QNetwork,

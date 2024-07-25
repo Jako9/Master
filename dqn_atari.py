@@ -6,6 +6,7 @@ from distutils.util import strtobool
 
 import gymnasium as gym
 import numpy as np
+import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -66,6 +67,12 @@ class QNetwork(nn.Module):
 
     def forward(self, x):
         return self.network(x / 255.0)
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="DQN evaluation")
+    parser.add_argument("--config", type=str, default="config.json", help="config file")
+    args = parser.parse_args()
+    return args
     
 
 def linear_schedule(start_e: float, end_e: float, duration: int, t: int):
@@ -82,12 +89,22 @@ if __name__ == "__main__":
         """
         )
     
-    with open('config.json') as f:
-        args_dict = json.load(f)
+    cfg = parse_args().config
+
+    try:
+        with open(cfg) as f:
+            args_dict = json.load(f)
+
+    except FileNotFoundError:
+        print("Config file not found")
+        exit(1)
+
+    print("Loaded config: ", cfg)
+    print(args_dict)
 
     args = SimpleNamespace(**args_dict)
 
-    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run_name = f"{args.wandb_project_name}/{args.exp_name}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb
 
@@ -117,7 +134,7 @@ if __name__ == "__main__":
     print(f"using device {device}")
 
     envs = gym.vector.SyncVectorEnv(
-        [make_env(args.env_id, args.seed + i, i, args.capture_video, run_name, args.video_path) for i in range(args.num_envs)]
+        [make_env(f"{args.wandb_project_name}/{args.exp_name}", args.seed + i, i, args.capture_video, run_name, args.video_path) for i in range(args.num_envs)]
     )
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
@@ -199,7 +216,7 @@ if __name__ == "__main__":
         episodic_returns = evaluate(
             model_path,
             make_env,
-            args.env_id,
+            f"{args.wandb_project_name}/{args.exp_name}",
             eval_episode=10,
             run_name=f"{run_name}-eval",
             Model=QNetwork,
@@ -210,13 +227,6 @@ if __name__ == "__main__":
 
         for idx, episodic_return in enumerate(episodic_returns):
             writer.add_scalar("eval/episodic_return", episodic_return, idx)
-
-        if args.upload_model:
-            from huggingface import push_to_hub
-
-            repo_name = f"{args.exp_name}"
-            repo_id = f"{args.hf_entity}/{repo_name}" if args.hf_entity else repo_name
-            push_to_hub(args, episodic_returns, repo_id, "DQN", f"runs/{run_name}", f"videos/{run_name}-eval")
 
     envs.close()
     writer.close()
