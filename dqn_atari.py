@@ -51,6 +51,7 @@ def make_env(env_id, seed, idx, capture_video, run_name, video_path):
 
 class QNetwork(nn.Module):
     def __init__(self, env):
+        import copy
         super().__init__()
         self.network = nn.Sequential(
             nn.Conv2d(4, 32, 8, stride=4),
@@ -62,11 +63,26 @@ class QNetwork(nn.Module):
             nn.Flatten(),
             nn.Linear(3136, 512),
             nn.ReLU(),
-            nn.Linear(512, env.single_action_space.n),
         )
+        self.head = nn.Linear(512, env.single_action_space.n)
+        self.plasticity_bias = nn.Linear(512, env.single_action_space.n, requires_grad=False)
+        self.plasticity_bias_correction = copy.deepcopy(self.plasticity_bias).requires_grad_(False)
 
     def forward(self, x):
-        return self.network(x / 255.0)
+        x = self.network(x / 255.0)
+
+        #Before plasticity injection
+        if self.head.requires_grad:
+            return self.head(x)
+        
+        #After plasticity injection
+        return self.head(x) + self.plasticity_bias(x) - self.plasticity_bias_correction(x)
+    
+    
+    def inject_plasticity(self):
+        self.head.requires_grad_(False)
+        self.plasticity_bias.requires_grad_(True)
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="DQN evaluation")
@@ -182,6 +198,9 @@ if __name__ == "__main__":
         obs = next_obs
 
         if global_step > args.learning_starts:
+            if global_step == args.plasticity_injection and args.plasticity_injection != 0:
+                print("Injecting plasticity")
+                q_network.inject_plasticity()
             if global_step % args.train_frequency == 0:
                 data = rb.sample(args.batch_size)
                 with torch.no_grad():
