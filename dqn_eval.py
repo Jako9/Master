@@ -76,7 +76,9 @@ if __name__ == "__main__":
     for folder_name in os.listdir(f"runs/{args.wandb_project_name}"):
         run_name = folder_name
 
-    assert run_name is not None, "No model found"
+    if run_name is None:
+        print("No runs found")
+        exit(1)
 
     print(f"Using model from {run_name}")
 
