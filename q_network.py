@@ -3,7 +3,6 @@ import torch.nn as nn
 
 class QNetwork(nn.Module):
     def __init__(self, env):
-        import copy
         super().__init__()
         self.network = nn.Sequential(
             nn.Conv2d(4, 32, 8, stride=4),
@@ -17,9 +16,11 @@ class QNetwork(nn.Module):
             nn.ReLU(),
         )
         self.head = nn.Linear(512, env.single_action_space.n)
-        self.head_ref = copy.deepcopy(self.head)
+        self.head_ref = nn.Linear(512, env.single_action_space.n)
+        self.head_ref.load_state_dict(self.head.state_dict())
         self.plasticity_bias = nn.Linear(512, env.single_action_space.n)
-        self.plasticity_bias_correction = copy.deepcopy(self.plasticity_bias)
+        self.plasticity_bias_correction = nn.Linear(512, env.single_action_space.n)
+        self.plasticity_bias_correction.load_state_dict(self.plasticity_bias.state_dict())
         
         self.injected = False
 
@@ -35,7 +36,7 @@ class QNetwork(nn.Module):
             return self.head(x)
         
         #After plasticity injection
-        return self.head(x) + self.plasticity_bias(x) - self.plasticity_bias_correction(x)
+        return self.head(x) + (self.plasticity_bias(x) - self.plasticity_bias_correction(x))
     
     def inject_plasticity(self):
         #Update head comparison only for sanity check

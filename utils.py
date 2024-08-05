@@ -52,13 +52,22 @@ class Linear_schedule():
     def __call__(self, t: int):
         return max(self.slope * t + self.start_e, self.end_e)
     
+class Exponential_schedule():
+    def __init__(self, start_e: float, end_e: float, duration: int):
+        self.start_e = start_e
+        self.end_e = end_e
+        self.slope = (self.end_e / self.start_e) ** (1 / duration)
+
+    def __call__(self, t: int):
+        return max(self.start_e * (self.slope ** t), self.end_e)
+    
 def process_infos(infos, writer, epsilon, global_step):
     if "final_info" in infos:
             for info in infos["final_info"]:
                 if "episode" not in info:
                     continue
                 print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-                writer.add_scalar("charts/episodic_return", info["episode"]["r"], epsilon)
-                writer.add_scalar("charts/episode_length", info["episode"]["l"], epsilon)
-                writer.add_scalar("charts/epsilon", epsilon, epsilon)
+                writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
+                writer.add_scalar("charts/episode_length", info["episode"]["l"], global_step)
+                writer.add_scalar("charts/epsilon", epsilon, global_step)
     

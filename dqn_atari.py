@@ -14,7 +14,7 @@ from stable_baselines3.common.buffers import ReplayBuffer
 from torch.utils.tensorboard import SummaryWriter
 
 from q_network import QNetwork
-from utils import parse_args, make_env, Linear_schedule, process_infos
+from utils import parse_args, make_env, Linear_schedule, Exponential_schedule, process_infos
 
 if __name__ == "__main__":
     cfg = parse_args().config
@@ -81,7 +81,8 @@ if __name__ == "__main__":
     start_time = time.time()
 
     obs, _ = envs.reset(seed=args.seed)
-    epsilon = Linear_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps)
+    #Could also use linear schedule
+    epsilon = Exponential_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps)
 
     for global_step in range(args.total_timesteps):
 
@@ -109,16 +110,21 @@ if __name__ == "__main__":
             if global_step == args.plasticity_injection and args.plasticity_injection != 0:
                 print("Injecting plasticity")
                 q_network.inject_plasticity()
+                target_network.inject_plasticity()
             
             #Sanity check for plasticity injection
             if (global_step == args.plasticity_injection / 2 or global_step == args.plasticity_injection + args.plasticity_injection / 2):
-                assert q_network.check_plasticity_status(), "Plasticity injection failed"
+                assert q_network.check_plasticity_status(), "Plasticity injection failed in QNetwork"
+                assert target_network.check_plasticity_status(), "Plasticity injection failed in TargetNetwork"
 
             if global_step % args.train_frequency == 0:
                 data = rb.sample(args.batch_size)
                 with torch.no_grad():
-                    target_max, _ = target_network(data.next_observations).max(dim=1)
+                    # Using double Q-learning to compute target values
+                    next_actions = q_network(data.next_observations).argmax(dim=1, keepdim=True)
+                    target_max = target_network(data.next_observations).gather(1, next_actions).squeeze()
                     td_target = data.rewards.flatten() + args.gamma * target_max * (1 - data.dones.flatten())
+                
                 old_val = q_network(data.observations).gather(1, data.actions).squeeze()
                 loss = F.mse_loss(td_target, old_val)
 
@@ -136,6 +142,8 @@ if __name__ == "__main__":
                     target_network_param.data.copy_(
                         args.tau * q_network_param.data + (1.0 - args.tau) * target_network_param.data
                     )
+                    
+
 
     #--After training--
     if args.save_model:
