@@ -9,9 +9,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
+import wandb
 
 from stable_baselines3.common.buffers import ReplayBuffer
-from torch.utils.tensorboard import SummaryWriter
 
 from q_network import QNetwork
 from utils import parse_args, make_env, Linear_schedule, Exponential_schedule, process_infos
@@ -33,7 +33,6 @@ if __name__ == "__main__":
 
     run_name = f"{args.wandb_project_name}/{args.exp_name}__{args.plasticity_injection}__{int(time.time())}"
     if args.track:
-        import wandb
 
         wandb.init(
             project=args.wandb_project_name,
@@ -44,12 +43,6 @@ if __name__ == "__main__":
             monitor_gym=True,
             save_code=True
         )
-
-    writer = SummaryWriter(f"runs/{run_name}")
-    writer.add_text(
-        "hyperparameters",
-        "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
-    )
 
     random.seed(args.seed)
     np.random.seed(args.seed)
@@ -95,7 +88,7 @@ if __name__ == "__main__":
         next_obs, rewards, terminated, truncated, infos = envs.step(actions)
 
         #Track episodic summaries if final episode
-        process_infos(infos, writer, epsilon(global_step), global_step)
+        process_infos(infos, epsilon(global_step), global_step)
         
         #Add experience to replay buffer
         real_next_obs = next_obs.copy()
@@ -129,9 +122,12 @@ if __name__ == "__main__":
                 loss = F.mse_loss(td_target, old_val)
 
                 if global_step % 100 == 0:
-                    writer.add_scalar("losses/td_loss", loss, global_step)
-                    writer.add_scalar("losses/q_values", old_val.mean().item(), global_step)
-                    writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
+                    wandb.log({
+                        "losses/td_loss": loss,
+                        "losses/q_values": old_val.mean().item(),
+                        "charts/SPS": int(global_step / (time.time() - start_time))
+                    },
+                    step=global_step)
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -148,25 +144,28 @@ if __name__ == "__main__":
     #--After training--
     if args.save_model:
         model_path = f"runs/{run_name}/{args.exp_name}.pth"
-        torch.save(q_network.state_dict(), model_path)
-        print(f"model saved to {model_path}")
+        try:
+            torch.save(q_network.state_dict(), model_path)
+            print(f"model saved to {model_path}")
+        except FileNotFoundError:
+            print("Model path not found")
 
-        from dqn_eval import evaluate
+    from dqn_eval import evaluate
 
-        episodic_returns = evaluate(
-            model_path,
-            make_env,
-            f"{args.wandb_project_name}/{args.exp_name}",
-            eval_episode=10,
-            run_name=f"{run_name}-eval",
-            Model=QNetwork,
-            video_path=args.video_path,
-            device=device,
-            epsilon=0,
-        )
+    episodic_returns = evaluate(
+        make_env,
+        f"{args.wandb_project_name}/{args.exp_name}",
+        eval_episode=100,
+        run_name=f"{run_name}-eval",
+        model=q_network,
+        video_path=args.video_path,
+        device=device,
+        epsilon=0,
+    )
 
-        for idx, episodic_return in enumerate(episodic_returns):
-            writer.add_scalar("eval/episodic_return", episodic_return, idx)
+    for idx, episodic_return in enumerate(episodic_returns):
+        print(f"eval_episode={idx}, episodic_return={episodic_return}")
+        wandb.log({"eval/episodic_return": episodic_return}, step=idx)
 
     envs.close()
-    writer.close()
+    wandb.finish()

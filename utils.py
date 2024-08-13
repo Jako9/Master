@@ -2,6 +2,8 @@ import argparse
 
 import gymnasium as gym
 
+import wandb
+
 from stable_baselines3.common.atari_wrappers import (
     ClipRewardEnv,
     EpisodicLifeEnv,
@@ -19,7 +21,7 @@ def parse_args():
 
 def make_env(env_id, seed, idx, capture_video, run_name, video_path):
     def thunk():
-        if capture_video and idx == 0:
+        if capture_video and idx  ==0:
             env = gym.make(env_id, render_mode="rgb_array")
             env = gym.wrappers.RecordVideo(env, f"{video_path}/{run_name}")
         else:
@@ -61,13 +63,15 @@ class Exponential_schedule():
     def __call__(self, t: int):
         return max(self.start_e * (self.slope ** t), self.end_e)
     
-def process_infos(infos, writer, epsilon, global_step):
+def process_infos(infos, epsilon, global_step):
     if "final_info" in infos:
             for info in infos["final_info"]:
                 if "episode" not in info:
                     continue
                 print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-                writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
-                writer.add_scalar("charts/episode_length", info["episode"]["l"], global_step)
-                writer.add_scalar("charts/epsilon", epsilon, global_step)
+                wandb.log({
+                    "charts/episodic_return": info["episode"]["r"],
+                    "charts/episode_length": info["episode"]["l"],
+                    "charts/epsilon": epsilon},
+                    step=global_step)
     

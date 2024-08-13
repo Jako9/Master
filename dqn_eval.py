@@ -11,20 +11,17 @@ import torch
 
 
 def evaluate(
-    model_path: str,
     make_env: Callable,
     env_id: str,
     eval_episode: int,
     run_name: str,
-    Model: torch.nn.Module,
+    model: torch.nn.Module,
     video_path: str,
     device: torch.device = torch.device("cpu"),
     epsilon: float = 0.05,
     capture_video: bool = True,
 ):
     envs = gym.vector.SyncVectorEnv([make_env(env_id, 0, 0, capture_video, run_name,video_path)])
-    model = Model(envs).to(device)
-    model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
 
     obs, _ = envs.reset()
