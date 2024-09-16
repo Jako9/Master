@@ -18,6 +18,7 @@ from utils import parse_args, make_env, Linear_schedule, Exponential_schedule, p
 
 if __name__ == "__main__":
     cfg = parse_args().config
+    gym.register(id="Mnist-v0", entry_point="envs:MnistEnv")
 
     try:
         with open(cfg) as f:
@@ -74,6 +75,7 @@ if __name__ == "__main__":
     start_time = time.time()
 
     obs, _ = envs.reset(seed=args.seed)
+
     #Could also use linear schedule
     epsilon = Exponential_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps)
 
@@ -88,7 +90,7 @@ if __name__ == "__main__":
         next_obs, rewards, terminated, truncated, infos = envs.step(actions)
 
         #Track episodic summaries if final episode
-        process_infos(infos, epsilon(global_step), global_step)
+        process_infos(infos, epsilon(global_step), global_step, args.track)
         
         #Add experience to replay buffer
         real_next_obs = next_obs.copy()
@@ -121,7 +123,7 @@ if __name__ == "__main__":
                 old_val = q_network(data.observations).gather(1, data.actions).squeeze()
                 loss = F.mse_loss(td_target, old_val)
 
-                if global_step % 100 == 0:
+                if global_step % 100 == 0 and args.track:
                     wandb.log({
                         "losses/td_loss": loss,
                         "losses/q_values": old_val.mean().item(),
@@ -165,7 +167,9 @@ if __name__ == "__main__":
 
     for idx, episodic_return in enumerate(episodic_returns):
         print(f"eval_episode={idx}, episodic_return={episodic_return}")
-        wandb.log({"eval/episodic_return": episodic_return}, step=idx)
+        if args.track:
+            wandb.log({"eval/episodic_return": episodic_return}, step=idx)
 
     envs.close()
-    wandb.finish()
+    if args.track:
+        wandb.finish()

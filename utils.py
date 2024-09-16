@@ -12,6 +12,8 @@ from stable_baselines3.common.atari_wrappers import (
     NoopResetEnv
 )
 
+from envs import FrameStackEmulator
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="DQN evaluation")
@@ -21,24 +23,29 @@ def parse_args():
 
 def make_env(env_id, seed, idx, capture_video, run_name, video_path):
     def thunk():
-        if capture_video and idx  ==0:
-            env = gym.make(env_id, render_mode="rgb_array")
-            env = gym.wrappers.RecordVideo(env, f"{video_path}/{run_name}")
+        if env_id.endswith("Mnist-v0"):
+            env = gym.make("Mnist-v0", render_mode="rgb_array")
         else:
-            env = gym.make(env_id)
+            env = gym.make(env_id, render_mode="rgb_array")
+            env = gym.wrappers.GrayScaleObservation(env)
+            env = EpisodicLifeEnv(env)
+        
+        if capture_video and idx  ==0:
+            env = gym.wrappers.RecordVideo(env, f"{video_path}/{run_name}")
 
         env = gym.wrappers.RecordEpisodeStatistics(env)
         env = NoopResetEnv(env, noop_max=30)
         env = MaxAndSkipEnv(env, skip=4)
-        env = EpisodicLifeEnv(env)
 
         if "FIRE" in env.unwrapped.get_action_meanings():
             env = FireResetEnv(env)
         
         env = ClipRewardEnv(env)
         env = gym.wrappers.ResizeObservation(env, (84, 84))
-        env = gym.wrappers.GrayScaleObservation(env)
-        env = gym.wrappers.FrameStack(env, 4)
+        if env_id.endswith("Mnist-v0"):
+            env = FrameStackEmulator(env, 4)
+        else:
+            env = gym.wrappers.FrameStack(env, 4)
         env.action_space.seed(seed)
 
         return env
@@ -63,15 +70,16 @@ class Exponential_schedule():
     def __call__(self, t: int):
         return max(self.start_e * (self.slope ** t), self.end_e)
     
-def process_infos(infos, epsilon, global_step):
+def process_infos(infos, epsilon, global_step, track):
     if "final_info" in infos:
             for info in infos["final_info"]:
                 if "episode" not in info:
                     continue
                 print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-                wandb.log({
-                    "charts/episodic_return": info["episode"]["r"],
-                    "charts/episode_length": info["episode"]["l"],
-                    "charts/epsilon": epsilon},
-                    step=global_step)
+                if track:
+                    wandb.log({
+                        "charts/episodic_return": info["episode"]["r"],
+                        "charts/episode_length": info["episode"]["l"],
+                        "charts/epsilon": epsilon},
+                        step=global_step)
     
