@@ -195,5 +195,6 @@ pyrightconfig.json
 runs/
 videos/
 wandb/
+MNIST/
 *.json
 # End of https://www.toptal.com/developers/gitignore/api/python,visualstudiocode
