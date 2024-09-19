@@ -12,7 +12,7 @@ from stable_baselines3.common.atari_wrappers import (
     NoopResetEnv
 )
 
-from envs import FrameStackEmulator
+from environments import FrameStackEmulator, Difficulty
 
 
 def parse_args():
@@ -24,24 +24,24 @@ def parse_args():
 def make_env(env_id, seed, idx, capture_video, run_name, video_path):
     def thunk():
         if env_id.endswith("Mnist-v0"):
-            env = gym.make("Mnist-v0", render_mode="rgb_array")
+            env = gym.make("Mnist-v0", render_mode="rgb_array", difficulty=Difficulty.HARD)
         else:
             env = gym.make(env_id, render_mode="rgb_array")
             env = gym.wrappers.GrayScaleObservation(env)
             env = EpisodicLifeEnv(env)
+            env = NoopResetEnv(env, noop_max=30)
+            env = MaxAndSkipEnv(env, skip=4)
         
         if capture_video and idx  ==0:
             env = gym.wrappers.RecordVideo(env, f"{video_path}/{run_name}")
 
-        env = gym.wrappers.RecordEpisodeStatistics(env)
-        env = NoopResetEnv(env, noop_max=30)
-        env = MaxAndSkipEnv(env, skip=4)
-
         if "FIRE" in env.unwrapped.get_action_meanings():
             env = FireResetEnv(env)
-        
+
+        env = gym.wrappers.RecordEpisodeStatistics(env)
         env = ClipRewardEnv(env)
         env = gym.wrappers.ResizeObservation(env, (84, 84))
+        
         if env_id.endswith("Mnist-v0"):
             env = FrameStackEmulator(env, 4)
         else:

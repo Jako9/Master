@@ -3,18 +3,38 @@ from gymnasium import spaces
 import numpy as np
 from torchvision import datasets
 
-class MnistEnv(gym.Env):
-    def __init__(self, render_mode='rgb_array', max_episode_steps=200):
+from enum import Enum
+from abc import ABC, abstractmethod
+
+class Difficulty(Enum):
+    EASY = 1
+    HARD = 2
+
+class Concept_Drift_Env(gym.Env, ABC):
+    @abstractmethod
+    def permute_labels(self):
+        raise NotImplementedError
+    
+    @abstractmethod
+    def get_labels(self):
+        raise NotImplementedError
+
+class MnistEnv(Concept_Drift_Env):
+    def __init__(self, render_mode: str = 'rgb_array',
+                 difficulty: Difficulty = Difficulty.EASY,
+                 max_episode_steps: int = 200):
+        
         x_train = datasets.MNIST(root=".", train=True, download=True).data.numpy()
         y_train = datasets.MNIST(root=".", train=True, download=True).targets.numpy()
         self.x_train = x_train.astype(np.uint8)
         self.y_train = y_train
-        self.actions = np.zeros_like(y_train)
+        self.difficulty = difficulty
 
         self.steps = 0
         self.i = 0
         self.max_episode_steps = max_episode_steps
         self.label_lookup = [0,1,2,3,4,5,6,7,8,9]
+        self.accumulated_reward = 0
 
         self.observation_space = spaces.Box(low=0, high=255, shape=(28,28), dtype='uint8')
         self.action_space = spaces.Discrete(10)
@@ -25,9 +45,8 @@ class MnistEnv(gym.Env):
         }
         self.render_mode = render_mode
 
-    def step(self, action):
+    def step(self, action: int):
         y = self.y_train[self.i]
-        self.actions[self.i] = action
 
         reward = 0
         done = False
@@ -42,47 +61,49 @@ class MnistEnv(gym.Env):
 
         self.i = (self.i + 1) % (len(self.x_train) - 1)
         
-
+        self.accumulated_reward += reward
         return self.x_train[self.i], reward, done, done, {}
 
-    def reset(self, seed=None, options=None):
+    def reset(self, seed: int = None, options: dict = None):
         np.random.seed(seed)
         self.i = np.random.randint(len(self.x_train))
         self.steps = 0
+        self.accumulated_reward = 0
 
         return self.x_train[self.i], {}
     
     def get_action_meanings(self):
-            return ["NOOP" for _ in range(10)]
+            return [str(i) for i in range(10)]
 
-    def update_labels(self, labels):
-        self.label_lookup = labels
+    def permute_labels(self):
+        if self.difficulty == Difficulty.EASY:
+            np.random.shuffle(self.label_lookup)
+        else:
+            np.random.shuffle(self.y_train)
 
     def get_labels(self):
         return self.label_lookup
     
     def render(self):
-        import pygame
-        canvas = pygame.Surface((28 + 10,28))
-        canvas.fill((0, 0, 0))
+        from PIL import Image, ImageDraw, ImageFont
 
-        for i in range(28):
-            for j in range(28):
-                if self.x_train[self.i][i][j] != 0:
-                    pygame.draw.rect(canvas, (255, 255, 255), (j, i, 1, 1))
-        
-        prediction = self.actions[self.i]
-        for i in range(28):
-            for j in range(10):
-                if j == prediction:
-                    pygame.draw.rect(canvas, (255, 255, 255), (j + 28, i, 1, 1))
-                else:
-                    pygame.draw.rect(canvas, (125 * (j / 10.0), 125, 125 - (125 * (j / 10.0))), (j + 28, i, 1, 1))
-        
-        result = np.transpose(
-            np.array(pygame.surfarray.pixels3d(canvas)), axes=(1, 0, 2)
-        )
-        return result
+        image = Image.new('L', (28, 28), color=0)
+        draw = ImageDraw.Draw(image)
+
+        font = ImageFont.load_default()
+        reward_as_text = str(self.accumulated_reward)
+        bbox = draw.textbbox((0, 0), reward_as_text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+
+        text_position = (14 - text_width // 2, 14 - text_height // 2)
+        draw.text(text_position, reward_as_text, fill=255, font=font)
+
+        reward_as_image = np.array(image)
+        image = self.x_train[self.i]
+
+        result = np.hstack([image, reward_as_image])
+        return np.repeat(result[:, :, np.newaxis], 3, axis=2)
 
 
 class FrameStackEmulator(gym.Wrapper):

@@ -15,10 +15,12 @@ from stable_baselines3.common.buffers import ReplayBuffer
 
 from q_network import QNetwork
 from utils import parse_args, make_env, Linear_schedule, Exponential_schedule, process_infos
+from environments import Concept_Drift_Env
 
 if __name__ == "__main__":
+    EVAL = False
     cfg = parse_args().config
-    gym.register(id="Mnist-v0", entry_point="envs:MnistEnv")
+    gym.register(id="Mnist-v0", entry_point="environments:MnistEnv")
 
     try:
         with open(cfg) as f:
@@ -64,111 +66,121 @@ if __name__ == "__main__":
     target_network = QNetwork(envs).to(device)
     target_network.load_state_dict(q_network.state_dict())
 
-    rb = ReplayBuffer(
-        args.buffer_size,
-        envs.single_observation_space,
-        envs.single_action_space,
-        device,
-        optimize_memory_usage=True,
-        handle_timeout_termination=False
-    )
-    start_time = time.time()
+    for concept_drift in range(args.num_retrains):
 
-    obs, _ = envs.reset(seed=args.seed)
+        print(f"Concept drift {concept_drift + 1}/{args.num_retrains}")
 
-    #Could also use linear schedule
-    epsilon = Exponential_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps)
 
-    for global_step in range(args.total_timesteps):
+        if args.plasticity_injection == concept_drift and args.plasticity_injection != 0:
+            print("Injecting plasticity")
+            q_network.inject_plasticity()
+            target_network.inject_plasticity()
 
-        #Exploration or exploitation
-        if random.random() < epsilon(global_step):
-            actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
+        rb = ReplayBuffer(
+            args.buffer_size,
+            envs.single_observation_space,
+            envs.single_action_space,
+            device,
+            optimize_memory_usage=True,
+            handle_timeout_termination=False
+        )
+        start_time = time.time()
+
+        if isinstance(envs.envs[0].unwrapped, Concept_Drift_Env):
+            envs.envs[0].unwrapped.permute_labels()
         else:
-            q_values = q_network(torch.Tensor(obs).to(device))
-            actions = torch.argmax(q_values, dim=1).cpu().numpy()
-        next_obs, rewards, terminated, truncated, infos = envs.step(actions)
-
-        #Track episodic summaries if final episode
-        process_infos(infos, epsilon(global_step), global_step, args.track)
+            gym.logger.warn("Concept drift not applied")
         
-        #Add experience to replay buffer
-        real_next_obs = next_obs.copy()
-        for idx, d in enumerate(truncated):
-            if d:
-                real_next_obs[idx] = infos["final_observation"][idx]
-        rb.add(obs, real_next_obs, actions, rewards, terminated, infos)
 
-        obs = next_obs
+        obs, _ = envs.reset(seed=args.seed)
 
-        if global_step > args.learning_starts:
-            if global_step == args.plasticity_injection and args.plasticity_injection != 0:
-                print("Injecting plasticity")
-                q_network.inject_plasticity()
-                target_network.inject_plasticity()
+        #Could also use linear schedule
+        epsilon = Exponential_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps)
+
+        for global_step in range(args.total_timesteps):
+
+            #Exploration or exploitation
+            if random.random() < epsilon(global_step):
+                actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
+            else:
+                q_values = q_network(torch.Tensor(obs).to(device))
+                actions = torch.argmax(q_values, dim=1).cpu().numpy()
+            next_obs, rewards, terminated, truncated, infos = envs.step(actions)
+
+            #Track episodic summaries if final episode
+            process_infos(infos, epsilon(global_step), global_step, args.track)
             
-            #Sanity check for plasticity injection
-            if (global_step == args.plasticity_injection / 2 or global_step == args.plasticity_injection + args.plasticity_injection / 2):
-                assert q_network.check_plasticity_status(), "Plasticity injection failed in QNetwork"
-                assert target_network.check_plasticity_status(), "Plasticity injection failed in TargetNetwork"
+            #Add experience to replay buffer
+            real_next_obs = next_obs.copy()
+            for idx, d in enumerate(truncated):
+                if d:
+                    real_next_obs[idx] = infos["final_observation"][idx]
+            rb.add(obs, real_next_obs, actions, rewards, terminated, infos)
 
-            if global_step % args.train_frequency == 0:
-                data = rb.sample(args.batch_size)
-                with torch.no_grad():
-                    # Using double Q-learning to compute target values
-                    next_actions = q_network(data.next_observations).argmax(dim=1, keepdim=True)
-                    target_max = target_network(data.next_observations).gather(1, next_actions).squeeze()
-                    td_target = data.rewards.flatten() + args.gamma * target_max * (1 - data.dones.flatten())
-                
-                old_val = q_network(data.observations).gather(1, data.actions).squeeze()
-                loss = F.mse_loss(td_target, old_val)
+            obs = next_obs
 
-                if global_step % 100 == 0 and args.track:
-                    wandb.log({
-                        "losses/td_loss": loss,
-                        "losses/q_values": old_val.mean().item(),
-                        "charts/SPS": int(global_step / (time.time() - start_time))
-                    },
-                    step=global_step)
-
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-
-            if global_step % args.target_network_update_freq == 0:
-                for target_network_param, q_network_param in zip(target_network.parameters(), q_network.parameters()):
-                    target_network_param.data.copy_(
-                        args.tau * q_network_param.data + (1.0 - args.tau) * target_network_param.data
-                    )
+            if global_step > args.learning_starts:
+                if global_step % args.train_frequency == 0:
+                    data = rb.sample(args.batch_size)
+                    with torch.no_grad():
+                        # Using double Q-learning to compute target values
+                        next_actions = q_network(data.next_observations).argmax(dim=1, keepdim=True)
+                        target_max = target_network(data.next_observations).gather(1, next_actions).squeeze()
+                        td_target = data.rewards.flatten() + args.gamma * target_max * (1 - data.dones.flatten())
                     
+                    old_val = q_network(data.observations).gather(1, data.actions).squeeze()
+                    loss = F.mse_loss(td_target, old_val)
 
+                    if global_step % 100 == 0 and args.track:
+                        wandb.log({
+                            "losses/td_loss": loss,
+                            "losses/q_values": old_val.mean().item(),
+                            "charts/SPS": int(global_step / (time.time() - start_time))
+                        },
+                        step=global_step)
 
-    #--After training--
-    if args.save_model:
-        model_path = f"runs/{run_name}/{args.exp_name}.pth"
-        try:
-            torch.save(q_network.state_dict(), model_path)
-            print(f"model saved to {model_path}")
-        except FileNotFoundError:
-            print("Model path not found")
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
 
-    from dqn_eval import evaluate
+                if global_step % args.target_network_update_freq == 0:
+                    for target_network_param, q_network_param in zip(target_network.parameters(), q_network.parameters()):
+                        target_network_param.data.copy_(
+                            args.tau * q_network_param.data + (1.0 - args.tau) * target_network_param.data
+                        )
+        
+        #Sanity check if plasticity was injected correctly
+        assert q_network.check_plasticity_status(), "Plasticity injection failed in QNetwork"
+        assert target_network.check_plasticity_status(), "Plasticity injection failed in TargetNetwork"
 
-    episodic_returns = evaluate(
-        make_env,
-        f"{args.wandb_project_name}/{args.exp_name}",
-        eval_episode=100,
-        run_name=f"{run_name}-eval",
-        model=q_network,
-        video_path=args.video_path,
-        device=device,
-        epsilon=0,
-    )
+        #--After training--
+        rb.reset()
+        if args.save_model:
+            model_path = f"runs/{run_name}/{args.exp_name}.pth"
+            try:
+                torch.save(q_network.state_dict(), model_path)
+                print(f"model saved to {model_path}")
+            except FileNotFoundError:
+                print("Model path not found")
 
-    for idx, episodic_return in enumerate(episodic_returns):
-        print(f"eval_episode={idx}, episodic_return={episodic_return}")
-        if args.track:
-            wandb.log({"eval/episodic_return": episodic_return}, step=idx)
+        if EVAL:#TODO Does not work with current label shuffling
+            from dqn_eval import evaluate
+
+            episodic_returns = evaluate(
+                make_env,
+                f"{args.wandb_project_name}/{args.exp_name}",
+                eval_episode=100,
+                run_name=f"{run_name}-eval",
+                model=q_network,
+                video_path=args.video_path,
+                device=device,
+                epsilon=0,
+            )
+
+            for idx, episodic_return in enumerate(episodic_returns):
+                print(f"eval_episode={idx}, episodic_return={episodic_return}")
+                if args.track:
+                    wandb.log({"eval/episodic_return": episodic_return}, step=idx)
 
     envs.close()
     if args.track:
