@@ -1,6 +1,6 @@
 # Deep Q-Network (DQN) for Atari Games
 
-This repository contains an implementation of the Deep Q-Network (DQN) algorithm for playing Atari games. The DQN algorithm, introduced by Mnih et al. in the paper [Playing Atari with Deep Reinforcement Learning](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf), combines Q-learning with deep neural networks to achieve impressive results in a variety of Atari 2600 games.
+This Repository creates a framework for benchmarking a DQN-Agent for loss of plasticity. It provides not only options to archive loss of plasticity by either training on difficult Atari Games for a long time or forcing overfitting on a RL MNIST variant but also provides options to mitigate or even reverse loss of plasticity
 
 ## Overview
 
@@ -12,6 +12,10 @@ The Deep Q-Network is a deep reinforcement learning algorithm that extends Q-lea
 
 The Atari 2600, a popular home video game console in the late 1970s and early 1980s, featured a diverse collection of games. These games serve as a benchmark for testing the capabilities of reinforcement learning algorithms. Each game in the Atari 2600 suite provides a unique environment with different challenges, making them an ideal testbed for training agents to generalize across a variety of tasks.
 
+### RL MNIST Variant
+
+The RL MNIST Variant, is a gym environment which enables RL-Agent to be benchmarked on the standart MNIST dataset. This is archived by interpreting the actions chosen by the Agent as Class Labels and rewarding correct Classification. The advantage of an RL environment opposite to using the underlying RL-Agent's network on standart MNIST is, that this approach enables setting baselines for training environmnets without introducing new variables by shifting from an RL to a supervised Classification Problem.
+
 ## Table of Contents
 
 - [Introduction](#introduction)
@@ -21,8 +25,7 @@ The Atari 2600, a popular home video game console in the late 1970s and early 19
   - [Installation](#installation)
 - [Usage](#usage)
 - [Training](#training)
-- [Evaluation](#evaluation)
-- [Results](#results)
+- [Config](#config)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -41,7 +44,7 @@ To run this project, you will need the following:
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/adhiiisetiawan/atari-dqn.git
+git clone https://github.com/jako9/master.git
 ```
 
 2. Install the required dependencies:
@@ -59,10 +62,11 @@ To train and evaluate the DQN agent, follow the steps outlined below:
 2. Train the DQN agent:
 
 ```bash
-sh train.sh
+python dqn_atari.py --config example_config.json
 ```
 
-If you want to change the game that you train, please edit the game environment name in `train.sh` file.
+To customize your own training environment, alter the hyperparameters in the example_config.json.
+An indepth explanation of each hyperparameter can be found in the [Config](#config) section.
 
 3. Evaluate the trained agent:
 
@@ -82,11 +86,35 @@ The training process involves the following steps:
    - Sample a batch of experiences from the replay buffer and perform a Q-learning update step.
    - Update the target Q-network periodically.
 
-## Evaluation
+## Config
 
-The evaluation process involves testing the trained DQN agent on a specific game. The agent's performance is measured in terms of the average score achieved over a specified number of episodes.
+exp_name -> The name of the Game (either "Mnist-v0" or an Atari Game)
+seed -> a set seed for deterministic randomness
+torch_deterministic -> deterministic torch
+cuda -> wether or not to utilize cuda
+track -> wether or not to track training using Wandb
+wandb_project_name -> Wandb project name
+wandb_entity -> Wandb Entity (can be null)
+capture_video -> wether or not to capture intermediate videos whilest training (evaluation will be captured regardeless)
+video_path -> path to video files
+save_model -> wether or not to save the model after training
+hf_entity -> hf Entity
 
-## Results
+total_timesteps -> How many steps in the environment one Concept should take
+learning_rate -> Learning rate
+num_envs -> How many environments should be initialized parallely (Only 1 supported right now)
+buffer_size -> size of the Replay Buffer
+gamma -> Discount factor
+tau -> Factor for soft or hard target network updates (0, no updates to 1, hard updates)
+target_network_update_freq -> how often the target network should catch up to the Q-Network
+batch_size -> Batch size for sampling from the Replay Buffer
+start_e -> Epsilon at the start
+end_e -> Epsilon at the end
+exploration_fraction -> Portion over which the epsilon should interpolate from start_e to end_e (0,1)
+learning_starts -> steps to be taken before any learning takes place
+train_frequency -> How many steps should be taken between Q-Network updates
+plasticity_injection -> After how many Concept Drifts the Plasticity Injection should take place (0 for no injeciton at all)
+num_retrains -> Number of Concept Drifts
 
 ### Game: `Q-Bert`
 
