@@ -25,5 +25,6 @@
     "learning_starts": 1000,
     "train_frequency": 4,
     "plasticity_injection": 5,
-    "num_retrains": 10
+    "num_retrains": 10,
+    "reset_params": false
 }

@@ -8,6 +8,7 @@ import gymnasium as gym
 import numpy as np
 import torch
 import torch.nn.functional as F
+from torch.cuda.amp import GradScaler, autocast
 import torch.optim as optim
 import wandb
 
@@ -63,13 +64,30 @@ if __name__ == "__main__":
 
     q_network = QNetwork(envs).to(device)
     optimizer = optim.Adam(q_network.parameters(), lr=args.learning_rate)
+    scaler = GradScaler()
     target_network = QNetwork(envs).to(device)
     target_network.load_state_dict(q_network.state_dict())
+
+    import platform
+    os_name = platform.system()
+    if os_name == "Linux":
+        q_network = torch.compile(q_network)
+        target_network = torch.compile(target_network)
+        print("Using Compiled Model")
+    else:
+        print(f"OS '{os_name}' not supported for model compilation")
+
+    if args.reset_params:
+        torch.save(q_network.state_dict(), "initial_params.pth")
 
     for concept_drift in range(args.num_retrains):
 
         print(f"Concept drift {concept_drift + 1}/{args.num_retrains}")
 
+        if args.reset_params:
+            print("Resetting params")
+            q_network.load_state_dict(torch.load("initial_params.pth"))
+            target_network.load_state_dict(q_network.state_dict())
 
         if args.plasticity_injection == concept_drift and args.plasticity_injection != 0:
             print("Injecting plasticity")
@@ -103,7 +121,8 @@ if __name__ == "__main__":
             if random.random() < epsilon(global_step):
                 actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
             else:
-                q_values = q_network(torch.Tensor(obs).to(device))
+                with autocast(dtype=torch.float16):
+                    q_values = q_network(torch.Tensor(obs).to(device))
                 actions = torch.argmax(q_values, dim=1).cpu().numpy()
             next_obs, rewards, terminated, truncated, infos = envs.step(actions)
 
@@ -129,7 +148,10 @@ if __name__ == "__main__":
                         td_target = data.rewards.flatten() + args.gamma * target_max * (1 - data.dones.flatten())
                     
                     old_val = q_network(data.observations).gather(1, data.actions).squeeze()
-                    loss = F.mse_loss(td_target, old_val)
+
+                    with autocast(dtype=torch.float16):
+                        loss = F.mse_loss(td_target, old_val)
+                    
 
                     if global_step % 100 == 0 and args.track:
                         wandb.log({
@@ -140,8 +162,9 @@ if __name__ == "__main__":
                         step=global_step)
 
                     optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
+                    scaler.scale(loss).backward()
+                    scaler.step(optimizer)
+                    scaler.update()
 
                 if global_step % args.target_network_update_freq == 0:
                     for target_network_param, q_network_param in zip(target_network.parameters(), q_network.parameters()):
