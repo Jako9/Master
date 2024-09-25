@@ -68,10 +68,16 @@ if __name__ == "__main__":
     target_network = QNetwork(envs).to(device)
     target_network.load_state_dict(q_network.state_dict())
 
+    import subprocess
     import platform
     os_name = platform.system()
-    cuda_version = torch.version.cuda
-    if os_name == "Linux" and float(cuda_version) >= 7.0:
+    result = subprocess.run(['nvidia-smi'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    cuda_version = 0.0
+    for line in result.stdout.split("\n"):
+        if "CUDA Version" in line:
+            cuda_version = float(line.split(":")[-1].strip().replace('|', ''))
+    
+    if os_name == "Linux" and cuda_version >= 7.0:
         q_network = torch.compile(q_network)
         target_network = torch.compile(target_network)
         print("Using Compiled Model")
