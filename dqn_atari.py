@@ -73,7 +73,10 @@ if __name__ == "__main__":
 
     cuda_version = 0
     if torch.cuda.is_available():
-        cuda_version = float(f"{torch.cuda.get_device_capability(0)[0]}.{torch.cuda.get_device_capability(0)[1]}")
+        try:
+            cuda_version = float(f"{torch.cuda.get_device_capability(0)[0]}.{torch.cuda.get_device_capability(0)[1]}")
+        except IndexError:
+            cuda_version = float(f"{torch.cuda.get_device_capability(0)[0]}.0")
 
     if os_name == "Linux" and cuda_version >= 7.0:
         q_network = torch.compile(q_network)
@@ -84,13 +87,19 @@ if __name__ == "__main__":
 
     if args.reset_params:
         torch.save(q_network.state_dict(), "initial_params.pth")
-
+    
     for concept_drift in range(args.num_retrains):
 
         print(f"Concept drift {concept_drift + 1}/{args.num_retrains}")
 
         if args.reset_params:
             print("Resetting params")
+            loaded_params_dict = torch.load("initial_params.pth")
+
+            if "_orig_mod." not in str(q_network.state_dict().keys()) and "_orig_mod." in str(loaded_params_dict.keys()):
+                adjusted_params_dict = {k.replace("_orig_mod.", ""): v for k, v in loaded_params_dict.items()}
+                loaded_params_dict = adjusted_params_dict
+
             q_network.load_state_dict(torch.load("initial_params.pth"))
             target_network.load_state_dict(q_network.state_dict())
 
