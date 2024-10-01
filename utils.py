@@ -21,10 +21,10 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def make_env(env_id, seed, idx, capture_video, run_name, video_path):
+def make_env(env_id, seed, idx, capture_video, run_name, video_path, difficulty=Difficulty.EASY, input_drift=False):
     def thunk():
         if env_id.endswith("Mnist-v0"):
-            env = gym.make("Mnist-v0", render_mode="rgb_array", difficulty=Difficulty.HARD)
+            env = gym.make("Mnist-v0", render_mode="rgb_array", difficulty=difficulty, input_drift=input_drift)
         else:
             env = gym.make(env_id, render_mode="rgb_array")
             env = gym.wrappers.GrayScaleObservation(env)

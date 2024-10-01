@@ -26,5 +26,7 @@
     "train_frequency": 4,
     "plasticity_injection": 5,
     "num_retrains": 10,
+    "difficulty": "hard",
+    "input_drift": false,
     "reset_params": false
 }

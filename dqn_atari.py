@@ -16,7 +16,7 @@ from stable_baselines3.common.buffers import ReplayBuffer
 
 from q_network import QNetwork
 from utils import parse_args, make_env, Linear_schedule, Exponential_schedule, process_infos
-from environments import Concept_Drift_Env
+from environments import Concept_Drift_Env, Difficulty
 
 if __name__ == "__main__":
     EVAL = False
@@ -57,8 +57,15 @@ if __name__ == "__main__":
 
     print(f"Using device {device}")
 
+    if args.difficulty == "easy":
+        difficulty = Difficulty.EASY
+    elif args.difficulty == "hard":
+        difficulty = Difficulty.HARD
+    else:
+        raise ValueError(f"Invalid difficulty: '{args.difficulty}'")
+
     envs = gym.vector.SyncVectorEnv(
-        [make_env(f"{args.wandb_project_name}/{args.exp_name}", args.seed + i, i, args.capture_video, run_name, args.video_path) for i in range(args.num_envs)]
+        [make_env(f"{args.wandb_project_name}/{args.exp_name}", args.seed + i, i, args.capture_video, run_name, args.video_path, difficulty, args.input_drift) for i in range(args.num_envs)]
     )
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
@@ -86,7 +93,7 @@ if __name__ == "__main__":
         print(f"OS '{os_name}' or GPU CUDA Capability '{cuda_version}' not supported for model compilation")
 
     if args.reset_params:
-        torch.save(q_network.state_dict(), "initial_params.pth")
+        torch.save(q_network.state_dict(), f"initial_params_{run_name.replace('/', '_')}.pth")
     
     for concept_drift in range(args.num_retrains):
 
@@ -94,13 +101,13 @@ if __name__ == "__main__":
 
         if args.reset_params:
             print("Resetting params")
-            loaded_params_dict = torch.load("initial_params.pth")
+            loaded_params_dict = torch.load(f"initial_params_{run_name.replace('/', '_')}.pth")
 
             if "_orig_mod." not in str(q_network.state_dict().keys()) and "_orig_mod." in str(loaded_params_dict.keys()):
                 adjusted_params_dict = {k.replace("_orig_mod.", ""): v for k, v in loaded_params_dict.items()}
                 loaded_params_dict = adjusted_params_dict
 
-            q_network.load_state_dict(torch.load("initial_params.pth"))
+            q_network.load_state_dict(loaded_params_dict)
             target_network.load_state_dict(q_network.state_dict())
 
         if args.plasticity_injection == concept_drift and args.plasticity_injection != 0:
@@ -119,7 +126,7 @@ if __name__ == "__main__":
         start_time = time.time()
 
         if isinstance(envs.envs[0].unwrapped, Concept_Drift_Env):
-            envs.envs[0].unwrapped.permute_labels()
+            envs.envs[0].unwrapped.inject_drift()
         else:
             gym.logger.warn("Concept drift not applied")
         
@@ -219,6 +226,10 @@ if __name__ == "__main__":
                 if args.track:
                     wandb.log({"eval/episodic_return": episodic_return}, step=idx)
 
+    #--After all concept drifts--
+    if args.reset_params:
+        import os
+        os.remove(f"initial_params_{run_name}.pth")
     envs.close()
     if args.track:
         wandb.finish()
