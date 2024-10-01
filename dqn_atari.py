@@ -229,7 +229,7 @@ if __name__ == "__main__":
     #--After all concept drifts--
     if args.reset_params:
         import os
-        os.remove(f"initial_params_{run_name}.pth")
+        os.remove(f"initial_params_{run_name.replace('/', '_')}.pth")
     envs.close()
     if args.track:
         wandb.finish()
