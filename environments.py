@@ -12,7 +12,7 @@ class Difficulty(Enum):
 
 class Concept_Drift_Env(gym.Env, ABC):
     @abstractmethod
-    def permute_labels(self):
+    def inject_drift(self):
         raise NotImplementedError
     
     @abstractmethod
@@ -22,6 +22,7 @@ class Concept_Drift_Env(gym.Env, ABC):
 class MnistEnv(Concept_Drift_Env):
     def __init__(self, render_mode: str = 'rgb_array',
                  difficulty: Difficulty = Difficulty.EASY,
+                 input_drift: bool = False,
                  max_episode_steps: int = 200):
         
         x_train = datasets.MNIST(root=".", train=True, download=True).data.numpy()
@@ -29,6 +30,7 @@ class MnistEnv(Concept_Drift_Env):
         self.x_train = x_train.astype(np.uint8)
         self.y_train = y_train
         self.difficulty = difficulty
+        self.input_drift = input_drift
 
         self.steps = 0
         self.i = 0
@@ -74,12 +76,24 @@ class MnistEnv(Concept_Drift_Env):
     
     def get_action_meanings(self):
             return [str(i) for i in range(10)]
+    
+    def inject_drift(self):
+        if self.input_drift:
+            self._premute_images()
+        else:
+            self._permute_labels()
 
-    def permute_labels(self):
+    def _permute_labels(self):
         if self.difficulty == Difficulty.EASY:
             np.random.shuffle(self.label_lookup)
         else:
             np.random.shuffle(self.y_train)
+
+    def _premute_images(self):
+        if self.difficulty == Difficulty.EASY:
+            self.x_train = np.rot90(self.x_train, k=1, axes=(1, 2))
+        else:
+            self.x_train = (np.random.rand(*self.x_train.shape) * 255).astype(np.uint8)
 
     def get_labels(self):
         return self.label_lookup
