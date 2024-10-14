@@ -2,6 +2,7 @@ import random
 import json
 from types import SimpleNamespace
 import time
+import inspect
 from distutils.util import strtobool
 
 import gymnasium as gym
@@ -14,14 +15,20 @@ import wandb
 
 from stable_baselines3.common.buffers import ReplayBuffer
 
-from q_network import QNetwork
-from utils import parse_args, make_env, Linear_schedule, Exponential_schedule, process_infos
-from environments import Concept_Drift_Env, Difficulty
+from network import QNetwork, Injectable
+from utils import parse_args, Linear_schedule, Exponential_schedule, process_infos
+from environments import Concept_Drift_Env, make_env, drifts, MnistDataset
 
 if __name__ == "__main__":
     EVAL = False
     cfg = parse_args().config
-    gym.register(id="Mnist-v0", entry_point="environments:MnistEnv")
+
+
+    # Dynamically register all classes in environments.drifts that inherit from Concept_Drift_Env
+    for name, obj in inspect.getmembers(drifts, inspect.isclass):
+        if issubclass(obj, Concept_Drift_Env) and obj is not Concept_Drift_Env:
+            print(f"Registering {name}...")
+            gym.register(id=f"{name.lower()}_custom-v0", entry_point=f"environments.drifts:{name}")
 
     try:
         with open(cfg) as f:
@@ -35,7 +42,7 @@ if __name__ == "__main__":
 
     args = SimpleNamespace(**args_dict)
 
-    run_name = f"{args.wandb_project_name}/{args.exp_name}__{args.plasticity_injection}__{int(time.time())}"
+    run_name = f"{args.wandb_project_name}/{args.exp_name}__{args.dataset}__{int(time.time())}"
     if args.track:
 
         wandb.init(
@@ -57,15 +64,13 @@ if __name__ == "__main__":
 
     print(f"Using device {device}")
 
-    if args.difficulty == "easy":
-        difficulty = Difficulty.EASY
-    elif args.difficulty == "hard":
-        difficulty = Difficulty.HARD
+    if args.dataset == "mnist":
+        dataset = MnistDataset()
     else:
-        raise ValueError(f"Invalid difficulty: '{args.difficulty}'")
+        raise ValueError(f"Dataset '{args.dataset}' not supported")
 
     envs = gym.vector.SyncVectorEnv(
-        [make_env(f"{args.wandb_project_name}/{args.exp_name}", args.seed + i, i, args.capture_video, run_name, args.video_path, difficulty, args.input_drift) for i in range(args.num_envs)]
+        [make_env(f"{args.wandb_project_name}/{args.exp_name}", args.seed + i, i, dataset, args.capture_video, run_name, args.video_path) for i in range(args.num_envs)]
     )
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
@@ -92,16 +97,20 @@ if __name__ == "__main__":
     else:
         print(f"OS '{os_name}' or GPU CUDA Capability '{cuda_version}' not supported for model compilation")
 
+    cache_folder = f"runs/.tmp_{run_name.replace('/', '_')}"
+    import os
+    os.makedirs(cache_folder, exist_ok=True)
+
     if args.reset_params:
-        torch.save(q_network.state_dict(), f"initial_params_{run_name.replace('/', '_')}.pth")
-    
+        torch.save(q_network.state_dict(), f"{cache_folder}/initial_params.pth")
+
     for concept_drift in range(args.num_retrains):
 
         print(f"Concept drift {concept_drift + 1}/{args.num_retrains}")
 
         if args.reset_params:
             print("Resetting params")
-            loaded_params_dict = torch.load(f"initial_params_{run_name.replace('/', '_')}.pth")
+            loaded_params_dict = torch.load(f"{cache_folder}/initial_params.pth")
 
             if "_orig_mod." not in str(q_network.state_dict().keys()) and "_orig_mod." in str(loaded_params_dict.keys()):
                 adjusted_params_dict = {k.replace("_orig_mod.", ""): v for k, v in loaded_params_dict.items()}
@@ -110,7 +119,9 @@ if __name__ == "__main__":
             q_network.load_state_dict(loaded_params_dict)
             target_network.load_state_dict(q_network.state_dict())
 
-        if args.plasticity_injection == concept_drift and args.plasticity_injection != 0:
+        if not isinstance(q_network, Injectable):
+            gym.logger.warn("Plasticity injection not supported for this model.. Skipping injection")
+        else:
             print("Injecting plasticity")
             q_network.inject_plasticity()
             target_network.inject_plasticity()
@@ -227,9 +238,8 @@ if __name__ == "__main__":
                     wandb.log({"eval/episodic_return": episodic_return}, step=idx)
 
     #--After all concept drifts--
-    if args.reset_params:
-        import os
-        os.remove(f"initial_params_{run_name.replace('/', '_')}.pth")
+    import os
+    os.system(f"rm -rf {cache_folder}")
     envs.close()
     if args.track:
         wandb.finish()

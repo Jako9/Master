@@ -1,54 +1,79 @@
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
-from torchvision import datasets
 
-from enum import Enum
+from stable_baselines3.common.atari_wrappers import (
+    ClipRewardEnv,
+    EpisodicLifeEnv,
+    FireResetEnv,
+    MaxAndSkipEnv,
+    NoopResetEnv
+)
+
 from abc import ABC, abstractmethod
 
-class Difficulty(Enum):
-    EASY = 1
-    HARD = 2
+def make_env(env_id, seed, idx, dataset, capture_video, run_name, video_path):
+    def thunk():
+        if "custom" in env_id:
+            env = gym.make(f"{env_id.split('/')[-1]}-v0", dataset=dataset)
+        else:
+            env = gym.make(env_id, render_mode="rgb_array")
+            env = gym.wrappers.GrayScaleObservation(env)
+            env = EpisodicLifeEnv(env)
+            env = NoopResetEnv(env, noop_max=30)
+            env = MaxAndSkipEnv(env, skip=4)
+        
+        if capture_video and idx  ==0:
+            env = gym.wrappers.RecordVideo(env, f"{video_path}/{run_name}")
+
+        if "FIRE" in env.unwrapped.get_action_meanings():
+            env = FireResetEnv(env)
+
+        env = gym.wrappers.RecordEpisodeStatistics(env)
+        env = ClipRewardEnv(env)
+        env = gym.wrappers.ResizeObservation(env, (84, 84))
+        
+        if "custom" in env_id:
+            env = FrameStackEmulator(env, 4)
+        else:
+            env = gym.wrappers.FrameStack(env, 4)
+        env.action_space.seed(seed)
+
+        return env
+    
+    return thunk
 
 class Concept_Drift_Env(gym.Env, ABC):
-    @abstractmethod
-    def inject_drift(self):
-        raise NotImplementedError
-    
-    @abstractmethod
-    def get_labels(self):
-        raise NotImplementedError
-
-class MnistEnv(Concept_Drift_Env):
-    def __init__(self, render_mode: str = 'rgb_array',
-                 difficulty: Difficulty = Difficulty.EASY,
-                 input_drift: bool = False,
-                 max_episode_steps: int = 200):
-        
-        x_train = datasets.MNIST(root=".", train=True, download=True).data.numpy()
-        y_train = datasets.MNIST(root=".", train=True, download=True).targets.numpy()
-        self.x_train = x_train.astype(np.uint8)
-        self.y_train = y_train
-        self.difficulty = difficulty
-        self.input_drift = input_drift
+    def __init__(self, dataset, max_episode_steps = 200) -> None:
+        self.data = dataset.data
+        self.labels = dataset.targets
+        self.shape = dataset.shape
+        self.label_lookup = range(np.max(self.labels) + 1)
 
         self.steps = 0
         self.i = 0
         self.max_episode_steps = max_episode_steps
-        self.label_lookup = [0,1,2,3,4,5,6,7,8,9]
         self.accumulated_reward = 0
 
         self.observation_space = spaces.Box(low=0, high=255, shape=(28,28), dtype='uint8')
         self.action_space = spaces.Discrete(10)
 
+        
         self.metadata = {
             'render_modes': ['rgb_array'],
             'render_fps': 10
         }
-        self.render_mode = render_mode
-
+        self.render_mode = 'rgb_array'
+    
+    @abstractmethod
+    def inject_drift(self):
+        raise NotImplementedError
+    
+    def get_labels(self):
+        return self.label_lookup
+    
     def step(self, action: int):
-        y = self.y_train[self.i]
+        y = self.labels[self.i]
 
         reward = 0
         done = False
@@ -61,47 +86,26 @@ class MnistEnv(Concept_Drift_Env):
         if self.steps >= self.max_episode_steps:
             done = True
 
-        self.i = (self.i + 1) % (len(self.x_train) - 1)
+        self.i = (self.i + 1) % (len(self.data) - 1)
         
         self.accumulated_reward += reward
-        return self.x_train[self.i], reward, done, done, {}
-
+        return self.data[self.i], reward, done, done, {}
+    
     def reset(self, seed: int = None, options: dict = None):
         np.random.seed(seed)
-        self.i = np.random.randint(len(self.x_train))
+        self.i = np.random.randint(len(self.data))
         self.steps = 0
         self.accumulated_reward = 0
 
-        return self.x_train[self.i], {}
+        return self.data[self.i], {}
     
     def get_action_meanings(self):
-            return [str(i) for i in range(10)]
-    
-    def inject_drift(self):
-        if self.input_drift:
-            self._premute_images()
-        else:
-            self._permute_labels()
-
-    def _permute_labels(self):
-        if self.difficulty == Difficulty.EASY:
-            np.random.shuffle(self.label_lookup)
-        else:
-            np.random.shuffle(self.y_train)
-
-    def _premute_images(self):
-        if self.difficulty == Difficulty.EASY:
-            self.x_train = np.rot90(self.x_train, k=1, axes=(1, 2))
-        else:
-            self.x_train = (np.random.rand(*self.x_train.shape) * 255).astype(np.uint8)
-
-    def get_labels(self):
-        return self.label_lookup
+            return [str(i) for i in range(len(self.label_lookup))]
     
     def render(self):
         from PIL import Image, ImageDraw, ImageFont
 
-        image = Image.new('L', (28, 28), color=0)
+        image = Image.new('L', self.shape, color=0)
         draw = ImageDraw.Draw(image)
 
         font = ImageFont.load_default()
@@ -114,7 +118,7 @@ class MnistEnv(Concept_Drift_Env):
         draw.text(text_position, reward_as_text, fill=255, font=font)
 
         reward_as_image = np.array(image)
-        image = self.x_train[self.i]
+        image = self.data[self.i]
 
         result = np.hstack([image, reward_as_image])
         return np.repeat(result[:, :, np.newaxis], 3, axis=2)

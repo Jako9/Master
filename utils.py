@@ -1,18 +1,5 @@
 import argparse
-
-import gymnasium as gym
-
 import wandb
-
-from stable_baselines3.common.atari_wrappers import (
-    ClipRewardEnv,
-    EpisodicLifeEnv,
-    FireResetEnv,
-    MaxAndSkipEnv,
-    NoopResetEnv
-)
-
-from environments import FrameStackEmulator, Difficulty
 
 
 def parse_args():
@@ -20,37 +7,6 @@ def parse_args():
     parser.add_argument("--config", type=str, default="config.json", help="config file")
     args = parser.parse_args()
     return args
-
-def make_env(env_id, seed, idx, capture_video, run_name, video_path, difficulty=Difficulty.EASY, input_drift=False):
-    def thunk():
-        if env_id.endswith("Mnist-v0"):
-            env = gym.make("Mnist-v0", render_mode="rgb_array", difficulty=difficulty, input_drift=input_drift)
-        else:
-            env = gym.make(env_id, render_mode="rgb_array")
-            env = gym.wrappers.GrayScaleObservation(env)
-            env = EpisodicLifeEnv(env)
-            env = NoopResetEnv(env, noop_max=30)
-            env = MaxAndSkipEnv(env, skip=4)
-        
-        if capture_video and idx  ==0:
-            env = gym.wrappers.RecordVideo(env, f"{video_path}/{run_name}")
-
-        if "FIRE" in env.unwrapped.get_action_meanings():
-            env = FireResetEnv(env)
-
-        env = gym.wrappers.RecordEpisodeStatistics(env)
-        env = ClipRewardEnv(env)
-        env = gym.wrappers.ResizeObservation(env, (84, 84))
-        
-        if env_id.endswith("Mnist-v0"):
-            env = FrameStackEmulator(env, 4)
-        else:
-            env = gym.wrappers.FrameStack(env, 4)
-        env.action_space.seed(seed)
-
-        return env
-    
-    return thunk
 
 class Linear_schedule():
     def __init__(self, start_e: float, end_e: float, duration: int):
