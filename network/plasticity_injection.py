@@ -1,8 +1,7 @@
-import torch
 import torch.nn as nn
-from .base_network import Injectable
+from .base_network import Plastic
 
-class QNetwork(Injectable):
+class Plasticity_Injection(Plastic):
     def __init__(self, env):
         super().__init__()
         self.network = nn.Sequential(
@@ -29,25 +28,21 @@ class QNetwork(Injectable):
 
     def forward(self, x):
         x = self.network(x / 255.0)
-        
-        #After plasticity injection
         return self.head(x) + (self.plasticity_bias(x) - self.plasticity_bias_correction(x))
-    
-    def inject_plasticity(self):
 
-        self.head.weight.data = self.head.weight.data + self.plasticity_bias.weight.data - self.plasticity_bias_correction.weight.data
-        self.head.bias.data = self.head.bias.data + self.plasticity_bias.bias.data - self.plasticity_bias_correction.bias.data
+    def every_drift(self, num_drift):
+
+        self.head.weight = nn.Parameter(self.head.weight + self.plasticity_bias.weight - self.plasticity_bias_correction.weight)
+        self.head.bias = nn.Parameter(self.head.bias + self.plasticity_bias.bias - self.plasticity_bias_correction.bias)
 
         self.plasticity_bias = nn.Linear(512, self.head.out_features).to(self.head.weight.device)
 
         self.plasticity_bias_correction = nn.Linear(512, self.head.out_features).to(self.head.weight.device)
         self.plasticity_bias_correction.load_state_dict(self.plasticity_bias.state_dict())
 
+        self._change_grad(self.plasticity_bias, True)
         self._change_grad(self.plasticity_bias_correction, False)
         self._change_grad(self.head, False)
-
-    def check_plasticity_status(self):
-        return True
     
     def _change_grad(self, layer, requires_grad):
         for param in layer.parameters():

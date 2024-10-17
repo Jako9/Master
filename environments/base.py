@@ -43,6 +43,14 @@ def make_env(env_id, seed, idx, dataset, capture_video, run_name, video_path):
     
     return thunk
 
+"""
+Abstract class that all environments should inherit from.
+This class provides an interface for environments to change internal dynamics.
+
+To implement a new concept drift override the inject_drift method.
+
+If the dýnamic change includes permuting whole classes, self.label_lookup should be used.
+"""
 class Concept_Drift_Env(gym.Env, ABC):
     def __init__(self, dataset, max_episode_steps = 200) -> None:
         self.data = dataset.data

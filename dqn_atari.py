@@ -15,7 +15,8 @@ import wandb
 
 from stable_baselines3.common.buffers import ReplayBuffer
 
-from network import QNetwork, Injectable
+import network
+from network import Plastic
 from utils import parse_args, Linear_schedule, Exponential_schedule, process_infos
 from environments import Concept_Drift_Env, make_env, drifts, MnistDataset
 
@@ -74,10 +75,20 @@ if __name__ == "__main__":
     )
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
-    q_network = QNetwork(envs).to(device)
+    try:
+        network_class = getattr(network, args.architecture)
+    except AttributeError:
+        raise ValueError(f"Network '{args.architecture}' not found")
+    print(f"Using network '{args.architecture}'")
+    q_network = network_class(envs).to(device)
+
+    assert isinstance(q_network, Plastic), "Network must inherit from Injectable"
+
     optimizer = optim.Adam(q_network.parameters(), lr=args.learning_rate)
     scaler = GradScaler()
-    target_network = QNetwork(envs).to(device)
+    target_network = network_class(envs).to(device)
+
+    assert isinstance(target_network, type(q_network)), "Target network and Q Network must be of same type"
     target_network.load_state_dict(q_network.state_dict())
 
     import platform
@@ -104,7 +115,11 @@ if __name__ == "__main__":
     if args.reset_params:
         torch.save(q_network.state_dict(), f"{cache_folder}/initial_params.pth")
 
+    q_network.every_init()
+
     for concept_drift in range(args.num_retrains):
+
+        q_network.every_drift(concept_drift)
 
         print(f"Concept drift {concept_drift + 1}/{args.num_retrains}")
 
@@ -118,13 +133,6 @@ if __name__ == "__main__":
 
             q_network.load_state_dict(loaded_params_dict)
             target_network.load_state_dict(q_network.state_dict())
-
-        if not isinstance(q_network, Injectable):
-            gym.logger.warn("Plasticity injection not supported for this model.. Skipping injection")
-        else:
-            print("Injecting plasticity")
-            q_network.inject_plasticity()
-            target_network.inject_plasticity()
 
         rb = ReplayBuffer(
             args.buffer_size,
@@ -148,6 +156,8 @@ if __name__ == "__main__":
         epsilon = Exponential_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps)
 
         for global_step in range(args.total_timesteps):
+
+            q_network.every_step(global_step)
 
             #Exploration or exploitation
             if random.random() < epsilon(global_step):
@@ -203,10 +213,6 @@ if __name__ == "__main__":
                         target_network_param.data.copy_(
                             args.tau * q_network_param.data + (1.0 - args.tau) * target_network_param.data
                         )
-        
-        #Sanity check if plasticity was injected correctly
-        assert q_network.check_plasticity_status(), "Plasticity injection failed in QNetwork"
-        assert target_network.check_plasticity_status(), "Plasticity injection failed in TargetNetwork"
 
         #--After training--
         rb.reset()
@@ -238,8 +244,8 @@ if __name__ == "__main__":
                     wandb.log({"eval/episodic_return": episodic_return}, step=idx)
 
     #--After all concept drifts--
-    import os
-    os.system(f"rm -rf {cache_folder}")
+    import shutil
+    shutil.rmtree(cache_folder)
     envs.close()
     if args.track:
         wandb.finish()

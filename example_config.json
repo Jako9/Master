@@ -1,5 +1,7 @@
 {
-    "exp_name": "Mnist-v0",
+    "exp_name": "shuffle_labels_custom",
+    "architecture": "Layer_Norm",
+    "dataset": "mnist",
     "seed": 0,
     "torch_deterministic": true,
     "cuda": true,
@@ -8,10 +10,10 @@
     "wandb_entity": null,
     "capture_video": true,
     "video_path": "videos",
-    "save_model": true,
+    "save_model": false,
     "hf_entity": "adhisetiawan",
 
-    "total_timesteps": 500000,
+    "total_timesteps": 5000000,
     "learning_rate": 1e-4,
     "num_envs": 1,
     "buffer_size": 200000,
@@ -24,9 +26,6 @@
     "exploration_fraction": 0.2,
     "learning_starts": 1000,
     "train_frequency": 4,
-    "plasticity_injection": 5,
     "num_retrains": 10,
-    "difficulty": "hard",
-    "input_drift": false,
     "reset_params": false
 }
