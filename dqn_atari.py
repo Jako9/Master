@@ -43,7 +43,7 @@ if __name__ == "__main__":
 
     args = SimpleNamespace(**args_dict)
 
-    run_name = f"{args.wandb_project_name}/{args.exp_name}__{args.dataset}__{int(time.time())}"
+    run_name = f"{args.wandb_project_name}/{args.exp_name}__{args.architecture}__{args.dataset}__{int(time.time())}"
     if args.track:
 
         wandb.init(
