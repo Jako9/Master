@@ -12,6 +12,7 @@
     "video_path": "videos",
     "save_model": false,
     "hf_entity": "adhisetiawan",
+    "use_compile": false,
 
     "total_timesteps": 5000000,
     "learning_rate": 1e-4,
