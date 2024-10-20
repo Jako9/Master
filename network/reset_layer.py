@@ -22,4 +22,4 @@ class Reset_Layer(Plastic):
         return self.head(x)
 
     def every_drift(self, num_drift):
-        self.head = nn.Linear(512, self.head.out_features).to(self.head.weight.device)
+        self.head.reset_parameters()

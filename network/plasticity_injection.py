@@ -35,9 +35,8 @@ class Plasticity_Injection(Plastic):
         self.head.weight = nn.Parameter(self.head.weight + self.plasticity_bias.weight - self.plasticity_bias_correction.weight)
         self.head.bias = nn.Parameter(self.head.bias + self.plasticity_bias.bias - self.plasticity_bias_correction.bias)
 
-        self.plasticity_bias = nn.Linear(512, self.head.out_features).to(self.head.weight.device)
 
-        self.plasticity_bias_correction = nn.Linear(512, self.head.out_features).to(self.head.weight.device)
+        self.plasticity_bias.reset_parameters()
         self.plasticity_bias_correction.load_state_dict(self.plasticity_bias.state_dict())
 
         self._change_grad(self.plasticity_bias, True)
