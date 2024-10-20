@@ -76,7 +76,7 @@ class Large_SNN(Plastic):
     def __init__(self, env, *args, **kwargs):
         super().__init__()
 
-        self.num_steps = 10
+        self.num_steps = 10 #TODO: Make this a hyperparameter
 
         self.conv2d_1 = nn.Conv2d(4, 32, 8, stride=4)
         self.conv2d_2 = nn.Conv2d(32, 64, 4, stride=2)

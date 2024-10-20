@@ -1,7 +1,7 @@
 from .base_network import Large_SNN
 import torch
 
-class Reset_Network(Large_SNN):
+class Reset_SNN(Large_SNN):
     def __init__(self, env, *args, **kwargs):
         super().__init__(env)
         self.cache_folder = kwargs["cache_folder"]
