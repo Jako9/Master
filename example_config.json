@@ -27,6 +27,5 @@
     "exploration_fraction": 0.2,
     "learning_starts": 1000,
     "train_frequency": 4,
-    "num_retrains": 10,
-    "reset_params": false
+    "num_retrains": 10
 }
