@@ -79,14 +79,19 @@ if __name__ == "__main__":
         network_class = getattr(network, args.architecture)
     except AttributeError:
         raise ValueError(f"Network '{args.architecture}' not found")
+    
+    cache_folder = f"runs/.tmp_{run_name.replace('/', '_')}"
+    import os
+    os.makedirs(cache_folder, exist_ok=True)
+
     print(f"Using network '{args.architecture}'")
-    q_network = network_class(envs).to(device)
+    q_network = network_class(envs, cache_folder=cache_folder).to(device)
 
     assert isinstance(q_network, Plastic), "Network must inherit from Injectable"
 
     optimizer = optim.Adam(q_network.parameters(), lr=args.learning_rate)
     scaler = GradScaler()
-    target_network = network_class(envs).to(device)
+    target_network = network_class(envs, cache_folder=cache_folder).to(device)
 
     assert isinstance(target_network, type(q_network)), "Target network and Q Network must be of same type"
     target_network.load_state_dict(q_network.state_dict())
@@ -108,13 +113,6 @@ if __name__ == "__main__":
     else:
         print(f"OS '{os_name}' or GPU CUDA Capability '{cuda_version}' not supported for model compilation") if args.use_compile else print("Not using Compiled Model")
 
-    cache_folder = f"runs/.tmp_{run_name.replace('/', '_')}"
-    import os
-    os.makedirs(cache_folder, exist_ok=True)
-
-    if args.reset_params:
-        torch.save(q_network.state_dict(), f"{cache_folder}/initial_params.pth")
-
     q_network.every_init()
 
     for concept_drift in range(args.num_retrains):
@@ -123,16 +121,7 @@ if __name__ == "__main__":
 
         print(f"Concept drift {concept_drift + 1}/{args.num_retrains}")
 
-        if args.reset_params:
-            print("Resetting params")
-            loaded_params_dict = torch.load(f"{cache_folder}/initial_params.pth")
-
-            if "_orig_mod." not in str(q_network.state_dict().keys()) and "_orig_mod." in str(loaded_params_dict.keys()):
-                adjusted_params_dict = {k.replace("_orig_mod.", ""): v for k, v in loaded_params_dict.items()}
-                loaded_params_dict = adjusted_params_dict
-
-            q_network.load_state_dict(loaded_params_dict)
-            target_network.load_state_dict(q_network.state_dict())
+        target_network.load_state_dict(q_network.state_dict())
 
         rb = ReplayBuffer(
             args.buffer_size,
