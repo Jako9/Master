@@ -1,16 +1,25 @@
 import torch.nn as nn
-
+from abc import ABC, abstractmethod
 
 """
 Abstract class that all networks should inherit from.
 This class provides an interface for hooking on different levels on the training loop.
 
 To implement the fitting plasticity method just override the method corresponding to the correct hook-level.
+Also implement the _forward method which is the forward pass of the network.
+
+1) every_init: This method is called once at the beginning of the training loop.
+2) every_drift: This method is called after every drift.
+3) every_step: This method is called after every step in the environment.
 """
-class Plastic(nn.Module):
+class Plastic(ABC, nn.Module):
 
     def forward(self, x):
-        return self.network(x / 255.0)
+        return self._forward(x / 255.0)
+    
+    @abstractmethod
+    def _forward(self, x):
+        raise NotImplementedError
     
     def every_init(self):
         pass
@@ -54,8 +63,8 @@ class Large_Network(Plastic):
             self.relu
         )
 
-    def forward(self, x):
-        x = self.body(x / 255.0)
+    def _forward(self, x):
+        x = self.body(x)
         return self.head(x)
     
 

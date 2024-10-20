@@ -3,7 +3,7 @@ from .base_network import Large_Network
 
 class Plasticity_Injection(Large_Network):
     def __init__(self, env, *args, **kwargs):
-        super().__init__()
+        super().__init__(env)
 
         self.plasticity_bias = nn.Linear(512, env.single_action_space.n)
 
@@ -13,8 +13,8 @@ class Plasticity_Injection(Large_Network):
         self._change_grad(self.head, False)
         self._change_grad(self.plasticity_bias_correction, False)
 
-    def forward(self, x):
-        x = self.body(x / 255.0)
+    def _forward(self, x):
+        x = self.body(x)
         return self.head(x) + (self.plasticity_bias(x) - self.plasticity_bias_correction(x))
 
     def every_drift(self, num_drift):
