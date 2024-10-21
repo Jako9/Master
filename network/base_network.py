@@ -69,23 +69,20 @@ class Large_Network(Plastic):
         return self.head(x)
     
 import snntorch as snn
-from snntorch import spikegen
 import torch
 
 class Small_SNN(Plastic):
     def __init__(self, env, *args, **kwargs):
         super().__init__()
 
-        self.num_steps = 5  #TODO: make this a hyperparameter
-
-        self.conv2d_1 = nn.Conv2d(4, 32, 8, stride=4)
+        self.conv2d_1 = nn.Conv2d(1, 32, 8, stride=4)
 
         self.lif1 = snn.Leaky(beta=0.95)
         self.lif_fc = snn.Leaky(beta=0.95)
 
         self.flatten = nn.Flatten()
 
-        self.linear = nn.Linear(12800, 256)
+        self.linear = nn.Linear(32 * 20 * 20, 256)
         self.head = nn.Linear(256, env.single_action_space.n)
 
         self.body = nn.Sequential(
@@ -98,24 +95,22 @@ class Small_SNN(Plastic):
 
     def _forward(self, x):
 
-        spike_train = spikegen.rate(x, num_steps=self.num_steps)
+        x = x.permute(1, 0, 2, 3).unsqueeze(2)
+
+        steps = x.size(0)
 
         mem1 = self.lif1.init_leaky()
         mem_fc = self.lif_fc.init_leaky()
 
-        spk_out = torch.zeros(x.size(0), 256, device=x.device)
+        for step in range(steps):
+            out = self.conv2d_1(x[step])
+            spk1, mem1 = self.lif1(out, mem1)
 
-        for step in range(self.num_steps):
-            x = self.conv2d_1(spike_train[step])
-            spk1, mem1 = self.lif1(x, mem1)
+            out = self.flatten(spk1)
+            out = self.linear(out)
+            spk_fc, mem_fc = self.lif_fc(out, mem_fc)
 
-            x = self.flatten(spk1)
-            x = self.linear(x)
-            spk_fc, mem_fc = self.lif_fc(x, mem_fc)
-
-            spk_out += spk_fc
-
-        return self.head(spk_out / self.num_steps)
+        return self.head(spk_fc)
 
 
 
