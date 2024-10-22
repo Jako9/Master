@@ -146,7 +146,7 @@ if __name__ == "__main__":
 
         for global_step in range(args.total_timesteps):
 
-            q_network.every_step(global_step)
+            q_network.every_step(global_step, args.total_timesteps)
 
             #Exploration or exploitation
             if random.random() < epsilon(global_step):
