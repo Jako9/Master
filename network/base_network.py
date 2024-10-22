@@ -27,7 +27,7 @@ class Plastic(ABC, nn.Module):
     def every_drift(self, num_drift):
         pass
 
-    def every_step(self, step):
+    def every_step(self, step, num_steps):
         pass
 
 """
