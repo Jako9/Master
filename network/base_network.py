@@ -71,19 +71,23 @@ class Large_Network(Plastic):
 import snntorch as snn
 import torch
 
-class Small_SNN(Plastic):
+class Large_SNN(Plastic):
     def __init__(self, env, *args, **kwargs):
         super().__init__()
 
         self.conv2d_1 = nn.Conv2d(1, 32, 8, stride=4)
+        self.conv2d_2 = nn.Conv2d(32, 64, 4, stride=2)
+        self.conv2d_3 = nn.Conv2d(64, 64, 3, stride=1)
 
         self.lif1 = snn.Leaky(beta=0.95)
+        self.lif2 = snn.Leaky(beta=0.95)
+        self.lif3 = snn.Leaky(beta=0.95)
         self.lif_fc = snn.Leaky(beta=0.95)
 
         self.flatten = nn.Flatten()
 
-        self.linear = nn.Linear(32 * 20 * 20, 256)
-        self.head = nn.Linear(256, env.single_action_space.n)
+        self.linear = nn.Linear(3136, 512)
+        self.head = nn.Linear(512, env.single_action_space.n)
 
         self.body = nn.Sequential(
             self.conv2d_1,
@@ -100,17 +104,29 @@ class Small_SNN(Plastic):
         steps = x.size(0)
 
         mem1 = self.lif1.init_leaky()
+        mem2 = self.lif2.init_leaky()
+        mem3 = self.lif3.init_leaky()
         mem_fc = self.lif_fc.init_leaky()
+
+        spk_out = torch.zeros(x.size(1), 512).to(x.device)
 
         for step in range(steps):
             out = self.conv2d_1(x[step])
             spk1, mem1 = self.lif1(out, mem1)
 
-            out = self.flatten(spk1)
+            out = self.conv2d_2(spk1)
+            spk2, mem2 = self.lif2(out, mem2)
+
+            out = self.conv2d_3(spk2)
+            spk3, mem3 = self.lif3(out, mem3)
+
+            out = self.flatten(spk3)
             out = self.linear(out)
             spk_fc, mem_fc = self.lif_fc(out, mem_fc)
 
-        return self.head(spk_fc)
+            spk_out += spk_fc
+
+        return self.head(spk_out / steps)
 
 
 
