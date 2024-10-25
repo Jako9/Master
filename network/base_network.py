@@ -2,7 +2,7 @@ import torch.nn as nn
 from abc import ABC, abstractmethod
 
 """
-Abstract class that all networks should inherit from.
+Abstract class for all networks.
 This class provides an interface for hooking on different levels on the training loop.
 
 To implement the fitting plasticity method just override the method corresponding to the correct hook-level.
@@ -20,6 +20,10 @@ class Plastic(ABC, nn.Module):
     @abstractmethod
     def _forward(self, x):
         raise NotImplementedError
+
+    def init_params(self, num_drifts, num_steps):
+        self.total_steps = num_steps
+        self.total_drifts = num_drifts
     
     def every_init(self):
         pass
@@ -27,18 +31,18 @@ class Plastic(ABC, nn.Module):
     def every_drift(self, num_drift):
         pass
 
-    def every_step(self, step, num_steps):
+    def every_step(self, step):
         pass
 
 """
-Standart large network with 3 convolutional layers and 2 linear layers.
+Standard large deep neural network with 3 convolutional layers and 2 linear layers.
 It provides interfaces for the three common plasticity methods.
 
 1) Use external modifications: Don't alter anything in the network, just use the external modifications.
 2) Modify the networks head: Use self.body and self.head to easily work on the output layer alone.
 3) Modify the whole network: Use self.layer__name for each layer to work on the whole network.
 """
-class Large_Network(Plastic):
+class Large_DNN(Plastic):
     def __init__(self, env, *args, **kwargs):
         super().__init__()
 
@@ -71,6 +75,14 @@ class Large_Network(Plastic):
 import snntorch as snn
 import torch
 
+"""
+Standard large deep spiking neural network with 3 convolutional layers and 2 linear layers.
+It provides interfaces for the three common plasticity methods.
+
+1) Use external modifications: Don't alter anything in the network, just use the external modifications.
+2) Modify the networks head: Use self.body and self.head to easily work on the output layer alone.
+3) Modify the whole network: Use self.layer__name for each layer to work on the whole network.
+"""
 class Large_SNN(Plastic):
     def __init__(self, env, *args, **kwargs):
         super().__init__()

@@ -113,6 +113,7 @@ if __name__ == "__main__":
     else:
         print(f"OS '{os_name}' or GPU CUDA Capability '{cuda_version}' not supported for model compilation") if args.use_compile else print("Not using Compiled Model")
 
+    q_network.init_params(args.num_retrains, args.total_timesteps)
     q_network.every_init()
 
     for concept_drift in range(args.num_retrains):
@@ -146,7 +147,7 @@ if __name__ == "__main__":
 
         for global_step in range(args.total_timesteps):
 
-            q_network.every_step(global_step, args.total_timesteps)
+            q_network.every_step(global_step)
 
             #Exploration or exploitation
             if random.random() < epsilon(global_step):

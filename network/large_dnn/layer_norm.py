@@ -1,7 +1,7 @@
 import torch.nn as nn
-from .base_network import Large_Network
+from ..base_network import Large_DNN
 
-class Layer_Norm(Large_Network):
+class Layer_Norm(Large_DNN):
     def __init__(self, env, *args, **kwargs):
         super().__init__(env)
         self.layer_norm_1 = nn.LayerNorm([32, 20, 20])

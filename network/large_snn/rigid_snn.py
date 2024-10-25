@@ -1,6 +1,6 @@
 import torch.nn as nn
-from .base_network import Large_Network
+from ..base_network import Large_SNN
 
-class Rigid(Large_Network):
+class Rigid_SNN(Large_SNN):
     def __init__(self, env, *args, **kwargs):
         super().__init__(env)
