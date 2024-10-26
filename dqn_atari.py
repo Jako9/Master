@@ -24,6 +24,8 @@ if __name__ == "__main__":
     EVAL = False
     cfg = parse_args().config
 
+    torch.set_float32_matmul_precision("medium")
+
 
     # Dynamically register all classes in environments.drifts that inherit from Concept_Drift_Env
     for name, obj in inspect.getmembers(drifts, inspect.isclass):
