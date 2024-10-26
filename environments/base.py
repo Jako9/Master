@@ -14,30 +14,35 @@ from abc import ABC, abstractmethod
 
 def make_env(env_id, seed, idx, dataset, capture_video, run_name, video_path):
     def thunk():
-        if "custom" in env_id:
+        if "custom" in env_id: # Custom environments
             env = gym.make(f"{env_id.split('/')[-1]}-v0", dataset=dataset)
-        else:
+
+            if capture_video and idx  ==0:
+                env = gym.wrappers.RecordVideo(env, f"{video_path}/{run_name}")
+
+            env = gym.wrappers.RecordEpisodeStatistics(env)
+            env = ClipRewardEnv(env)
+            env = gym.wrappers.ResizeObservation(env, (84, 84))
+            env = FrameStackEmulator(env, 4)
+        else: # Atari environments
             env = gym.make(env_id, render_mode="rgb_array")
-            env = gym.wrappers.GrayScaleObservation(env)
-            env = EpisodicLifeEnv(env)
+
+            if capture_video and idx  ==0:
+                env = gym.wrappers.RecordVideo(env, f"{video_path}/{run_name}")
+
+            env = gym.wrappers.RecordEpisodeStatistics(env)
             env = NoopResetEnv(env, noop_max=30)
             env = MaxAndSkipEnv(env, skip=4)
-        
-        if capture_video and idx  ==0:
-            env = gym.wrappers.RecordVideo(env, f"{video_path}/{run_name}")
+            env = EpisodicLifeEnv(env)
 
-        if "FIRE" in env.unwrapped.get_action_meanings():
-            env = FireResetEnv(env)
-
-        env = gym.wrappers.RecordEpisodeStatistics(env)
-        env = ClipRewardEnv(env)
-        env = gym.wrappers.ResizeObservation(env, (84, 84))
-        
-        if "custom" in env_id:
-            env = FrameStackEmulator(env, 4)
-        else:
+            if "FIRE" in env.unwrapped.get_action_meanings():
+                env = FireResetEnv(env)
+            
+            env = ClipRewardEnv(env)
+            env = gym.wrappers.ResizeObservation(env, (84, 84))
+            env = gym.wrappers.GrayScaleObservation(env)
             env = gym.wrappers.FrameStack(env, 4)
-        env.action_space.seed(seed)
+            env.action_space.seed(seed)
 
         return env
     
