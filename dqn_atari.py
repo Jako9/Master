@@ -48,6 +48,7 @@ if __name__ == "__main__":
 
         wandb.init(
             project=args.wandb_project_name,
+            group=args.exp_name,
             entity=args.wandb_entity,
             sync_tensorboard=True,
             config=vars(args),
@@ -153,7 +154,7 @@ if __name__ == "__main__":
             if random.random() < epsilon(global_step):
                 actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
             else:
-                with autocast(dtype=torch.float16):
+                with autocast(dtype=torch.bfloat16):
                     q_values = q_network(torch.Tensor(obs).to(device))
                 actions = torch.argmax(q_values, dim=1).cpu().numpy()
             next_obs, rewards, terminated, truncated, infos = envs.step(actions)
@@ -181,7 +182,7 @@ if __name__ == "__main__":
                     
                     old_val = q_network(data.observations).gather(1, data.actions).squeeze()
 
-                    with autocast(dtype=torch.float16):
+                    with autocast(dtype=torch.bfloat16):
                         loss = F.mse_loss(td_target, old_val)
                     
 
