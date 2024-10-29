@@ -10,4 +10,6 @@ class MnistDataset(base_dataset):
         self.data = x_train.astype(np.uint8)
         self.targets = y_train
 
+        self.class_names = [str(i) for i in range(10)]
+
         self.shape = (28,28)

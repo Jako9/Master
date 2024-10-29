@@ -26,9 +26,23 @@ class Plasticity_Injection_Once(Large_DNN):
         x = self.relu(self.conv2d_2(x))
         x = self.relu(self.conv2d_3(x))
         x = self.flatten(x)
-        x = self.linear(x) + (self.plasticity_bias_linear(x) - self.plasticity_bias_correction_linear(x))
-        x = self.relu(x)
-        return self.head(x) + (self.plasticity_bias(x) - self.plasticity_bias_correction(x))
+
+        #h(x)
+        h = self.linear(x)
+        h = self.relu(h)
+        h = self.head(h)
+
+        #b(x)
+        b = self.plasticity_bias_linear(x)
+        b = self.relu(b)
+        b = self.plasticity_bias(b)
+
+        #b'(x)
+        b_ = self.plasticity_bias_correction_linear(x)
+        b_ = self.relu(b_)
+        b_ = self.plasticity_bias_correction(b_)
+        
+        return h + b - b_
 
     def every_step(self, step):
 
