@@ -196,6 +196,7 @@ runs/
 videos/
 wandb/
 MNIST/
+cifar-100-python/
 *.json
 *.pth
 # End of https://www.toptal.com/developers/gitignore/api/python,visualstudiocode
