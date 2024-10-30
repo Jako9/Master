@@ -3,7 +3,7 @@ import torch
 
 class Reset_Network(Large_DNN):
     def __init__(self, env, *args, **kwargs):
-        super().__init__(env)
+        super().__init__(env, *args, **kwargs)
         self.cache_folder = kwargs["cache_folder"]
 
         torch.save(self.state_dict(), f"{self.cache_folder}/initial_params.pth")

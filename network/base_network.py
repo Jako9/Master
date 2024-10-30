@@ -14,6 +14,11 @@ Also implement the _forward method which is the forward pass of the network.
 """
 class Plastic(ABC, nn.Module):
 
+    def __init__(self, total_steps, total_drifts, *args, **kwargs):
+        super().__init__()
+        self.total_steps = total_steps
+        self.total_drifts = total_drifts
+
     def forward(self, x):
         return self._forward(x / 255.0)
     
@@ -44,7 +49,7 @@ It provides interfaces for the three common plasticity methods.
 """
 class Large_DNN(Plastic):
     def __init__(self, env, *args, **kwargs):
-        super().__init__()
+        super().__init__(*args, **kwargs)
 
         self.conv2d_1 = nn.Conv2d(4, 32, 8, stride=4)
         self.conv2d_2 = nn.Conv2d(32, 64, 4, stride=2)
@@ -85,7 +90,7 @@ It provides interfaces for the three common plasticity methods.
 """
 class Large_SNN(Plastic):
     def __init__(self, env, *args, **kwargs):
-        super().__init__()
+        super().__init__(*args, **kwargs)
 
         self.conv2d_1 = nn.Conv2d(1, 32, 8, stride=4)
         self.conv2d_2 = nn.Conv2d(32, 64, 4, stride=2)

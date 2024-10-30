@@ -90,16 +90,19 @@ if __name__ == "__main__":
     os.makedirs(cache_folder, exist_ok=True)
 
     print(f"Using network '{args.architecture}'")
-    q_network = network_class(envs, cache_folder=cache_folder).to(device)
+    q_network = network_class(envs, args.total_timesteps, args.num_retrains, cache_folder=cache_folder).to(device)
 
     assert isinstance(q_network, Plastic), "Network must inherit from Injectable"
 
     optimizer = optim.Adam(q_network.parameters(), lr=args.learning_rate)
     scaler = GradScaler()
-    target_network = network_class(envs, cache_folder=cache_folder).to(device)
+    target_network = network_class(envs, args.total_timesteps, args.num_retrains, cache_folder=cache_folder).to(device)
 
     assert isinstance(target_network, type(q_network)), "Target network and Q Network must be of same type"
     target_network.load_state_dict(q_network.state_dict())
+
+    q_network.every_init()
+    target_network.every_init()
 
     import platform
     os_name = platform.system()
@@ -117,9 +120,6 @@ if __name__ == "__main__":
         print("Using Compiled Model")
     else:
         print(f"OS '{os_name}' or GPU CUDA Capability '{cuda_version}' not supported for model compilation") if args.use_compile else print("Not using Compiled Model")
-
-    q_network.init_params(args.num_retrains, args.total_timesteps)
-    q_network.every_init()
 
     for concept_drift in range(args.num_retrains):
 
