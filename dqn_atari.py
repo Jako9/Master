@@ -115,8 +115,8 @@ if __name__ == "__main__":
             cuda_version = float(f"{torch.cuda.get_device_capability(0)[0]}.0")
 
     if os_name == "Linux" and cuda_version >= 7.0 and args.use_compile:
-        q_network = torch.compile(q_network)
-        target_network = torch.compile(target_network)
+        q_network = torch.compile(q_network, mode='max_autotune')
+        target_network = torch.compile(target_network, mode='max_autotune')
         print("Using Compiled Model")
     else:
         print(f"OS '{os_name}' or GPU CUDA Capability '{cuda_version}' not supported for model compilation") if args.use_compile else print("Not using Compiled Model")
