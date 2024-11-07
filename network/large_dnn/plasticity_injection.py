@@ -48,11 +48,11 @@ class Plasticity_Injection(Large_DNN):
             self._change_grad(self.linear, False)
 
     def _init(self):
-        self.plasticity_linear = []
-        self.plasticity = []
+        self.plasticity_linear = nn.ModuleList()
+        self.plasticity = nn.ModuleList()
 
-        self.bias = []
-        self.bias_correction = []
+        self.bias = nn.ModuleList()
+        self.bias_correction = nn.ModuleList()
 
         for _ in range(self.total_drifts):
             linear = nn.Linear(3136, 512)
