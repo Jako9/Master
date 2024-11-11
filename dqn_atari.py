@@ -76,7 +76,7 @@ if __name__ == "__main__":
         raise ValueError(f"Dataset '{args.dataset}' not supported")
 
     envs = gym.vector.SyncVectorEnv(
-        [make_env(f"{args.wandb_project_name}/{args.exp_name}", args.seed + i, i, dataset, args.capture_video, run_name, args.video_path) for i in range(args.num_envs)]
+        [make_env(f"{args.exp_name}", args.seed + i, i, dataset, args.capture_video, run_name, args.video_path) for i in range(args.num_envs)]
     )
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
