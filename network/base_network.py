@@ -79,6 +79,7 @@ class Large_DNN(Plastic):
     
 import snntorch as snn
 import torch
+import numpy as np
 
 """
 Standard large deep spiking neural network with 3 convolutional layers and 2 linear layers.
@@ -99,7 +100,7 @@ class Large_SNN(Plastic):
         self.lif1 = snn.Leaky(beta=0.95)
         self.lif2 = snn.Leaky(beta=0.95)
         self.lif3 = snn.Leaky(beta=0.95)
-        self.lif_fc = snn.Leaky(beta=0.95)
+        self.lif_fc = snn.Leaky(beta=0.95, threshold=np.inf)
 
         self.flatten = nn.Flatten()
 
@@ -125,7 +126,7 @@ class Large_SNN(Plastic):
         mem3 = self.lif3.init_leaky()
         mem_fc = self.lif_fc.init_leaky()
 
-        spk_out = torch.zeros(x.size(1), 512).to(x.device)
+        mem_out = torch.zeros(x.size(1), 512).to(x.device)
 
         for step in range(steps):
             out = self.conv2d_1(x[step])
@@ -139,11 +140,12 @@ class Large_SNN(Plastic):
 
             out = self.flatten(spk3)
             out = self.linear(out)
-            spk_fc, mem_fc = self.lif_fc(out, mem_fc)
+            _, mem_fc = self.lif_fc(out, mem_fc)
 
-            spk_out += spk_fc
+            #TODO: Be able to add other pooling methods (mean, last, etc.)
+            mem_out = torch.max(mem_out, mem_fc)
 
-        return self.head(spk_out / steps)
+        return self.head(mem_out)
 
 
 
