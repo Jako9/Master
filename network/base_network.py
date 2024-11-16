@@ -80,6 +80,7 @@ class Large_DNN(Plastic):
 import snntorch as snn
 import torch
 import numpy as np
+from snntorch import spikegen
 
 """
 Standard large deep spiking neural network with 3 convolutional layers and 2 linear layers.
@@ -93,9 +94,11 @@ class Large_SNN(Plastic):
     def __init__(self, env, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self.num_steps = 10
+
         self.action_space = env.single_action_space.n
 
-        self.conv2d_1 = nn.Conv2d(1, 32, 8, stride=4)
+        self.conv2d_1 = nn.Conv2d(4, 32, 8, stride=4)
         self.conv2d_2 = nn.Conv2d(32, 64, 4, stride=2)
         self.conv2d_3 = nn.Conv2d(64, 64, 3, stride=1)
 
@@ -103,11 +106,12 @@ class Large_SNN(Plastic):
         self.lif2 = snn.Leaky(beta=0.95)
         self.lif3 = snn.Leaky(beta=0.95)
         self.lif_fc = snn.Leaky(beta=0.95)
+        #TODO: Implement a real LI head instead of modifying LIF
         self.lif_head = snn.Leaky(beta=0.95, threshold=np.iinfo(np.int32).max)
 
         self.flatten = nn.Flatten()
 
-        self.linear = nn.Linear(3136, 512)
+        self.linear = nn.Linear(12800, 512)
         self.head = nn.Linear(512, self.action_space)
 
         self.body = nn.Sequential(
@@ -120,9 +124,7 @@ class Large_SNN(Plastic):
 
     def _forward(self, x):
 
-        x = x.permute(1, 0, 2, 3).unsqueeze(2)
-
-        steps = x.size(0)
+        spike_train = spikegen.rate(x, num_steps=self.num_steps)
 
         mem1 = self.lif1.init_leaky()
         mem2 = self.lif2.init_leaky()
@@ -132,8 +134,8 @@ class Large_SNN(Plastic):
 
         mem_out = torch.zeros(x.size(1), self.action_space).to(x.device)
 
-        for step in range(steps):
-            out = self.conv2d_1(x[step])
+        for step in range(self.num_steps):
+            out = self.conv2d_1(spike_train[step])
             spk1, mem1 = self.lif1(out, mem1)
 
             out = self.conv2d_2(spk1)
