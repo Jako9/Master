@@ -111,7 +111,7 @@ class Large_SNN(Plastic):
 
         self.flatten = nn.Flatten()
 
-        self.linear = nn.Linear(12800, 512)
+        self.linear = nn.Linear(3136, 512)
         self.head = nn.Linear(512, self.action_space)
 
         self.body = nn.Sequential(
