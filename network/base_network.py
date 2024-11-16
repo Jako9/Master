@@ -101,6 +101,11 @@ class Large_SNN(Plastic):
         self.conv2d_1 = nn.Conv2d(4, 32, 8, stride=4)
         self.conv2d_2 = nn.Conv2d(32, 64, 4, stride=2)
         self.conv2d_3 = nn.Conv2d(64, 64, 3, stride=1)
+        
+        self.flatten = nn.Flatten()
+
+        self.linear = nn.Linear(3136, 512)
+        self.head = nn.Linear(512, self.action_space)
 
         self.lif1 = snn.Leaky(beta=0.95)
         self.lif2 = snn.Leaky(beta=0.95)
@@ -108,11 +113,6 @@ class Large_SNN(Plastic):
         self.lif_fc = snn.Leaky(beta=0.95)
         #TODO: Implement a real LI head instead of modifying LIF
         self.lif_head = snn.Leaky(beta=0.95, threshold=np.iinfo(np.int32).max)
-
-        self.flatten = nn.Flatten()
-
-        self.linear = nn.Linear(3136, 512)
-        self.head = nn.Linear(512, self.action_space)
 
         self.body = nn.Sequential(
             self.conv2d_1,
@@ -132,7 +132,7 @@ class Large_SNN(Plastic):
         mem_fc = self.lif_fc.init_leaky()
         mem_head = self.lif_head.init_leaky()
 
-        mem_out = torch.zeros(x.size(1), self.action_space).to(x.device)
+        mem_out = torch.zeros(x.size(0), self.action_space).to(x.device)
 
         for step in range(self.num_steps):
             out = self.conv2d_1(spike_train[step])
