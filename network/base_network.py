@@ -103,7 +103,7 @@ class Large_SNN(Plastic):
         self.lif2 = snn.Leaky(beta=0.95)
         self.lif3 = snn.Leaky(beta=0.95)
         self.lif_fc = snn.Leaky(beta=0.95)
-        self.lif_head = snn.Leaky(beta=0.95, threshold=np.inf)
+        self.lif_head = snn.Leaky(beta=0.95, threshold=np.iinfo(np.int32).max)
 
         self.flatten = nn.Flatten()
 
@@ -144,14 +144,15 @@ class Large_SNN(Plastic):
 
             out = self.flatten(spk3)
             out = self.linear(out)
-            spk_out, mem_fc = self.lif_fc(out, mem_fc)
+            spk_fc, mem_fc = self.lif_fc(out, mem_fc)
 
-            out = self.head(spk_out)
+            out = self.head(spk_fc)
 
             _, mem_head = self.lif_head(out, mem_head)
 
             #TODO: Be able to add other pooling methods (mean, last, etc.)
-            mem_out = torch.max(mem_out, mem_head)
+
+            mem_out = torch.max(mem_head, mem_out)
 
         return mem_out
 
