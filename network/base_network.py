@@ -107,6 +107,10 @@ class Large_SNN(Plastic):
         self.linear = nn.Linear(3136, 512)
         self.head = nn.Linear(512, self.action_space)
 
+        self.pop1 = PopNorm([32, 20, 20], threshold=1, v_reset=0)
+        self.pop2 = PopNorm([64, 9, 9], threshold=1, v_reset=0)
+        self.pop3 = PopNorm([64, 7, 7], threshold=1, v_reset=0)
+
         self.lif1 = snn.Leaky(beta=0.95)
         self.lif2 = snn.Leaky(beta=0.95)
         self.lif3 = snn.Leaky(beta=0.95)
@@ -136,12 +140,15 @@ class Large_SNN(Plastic):
 
         for step in range(self.num_steps):
             out = self.conv2d_1(spike_train[step])
+            out = self.pop1(out)
             spk1, mem1 = self.lif1(out, mem1)
 
             out = self.conv2d_2(spk1)
+            out = self.pop2(out)
             spk2, mem2 = self.lif2(out, mem2)
 
             out = self.conv2d_3(spk2)
+            out = self.pop3(out)
             spk3, mem3 = self.lif3(out, mem3)
 
             out = self.flatten(spk3)
@@ -160,5 +167,106 @@ class Large_SNN(Plastic):
 
 
 
-    
+from torch.nn import Module, Parameter, functional as F
+from torch import Tensor, Size
+from typing import List, Union
+import numbers
+_shape_t = Union[int, List[int], Size]
+class PopNorm(Module):
+    r"""Applies Layer Normalization over a mini-batch of inputs as described in
+    the paper `Layer Normalization <https://arxiv.org/abs/1607.06450>`__
+
+    .. math::
+        y = \frac{x - \mathrm{E}[x]}{ \sqrt{\mathrm{Var}[x] + \epsilon}} * \gamma + \beta
+
+    The mean and standard-deviation are calculated separately over the last
+    certain number dimensions which have to be of the shape specified by
+    :attr:`normalized_shape`.
+    :math:`\gamma` and :math:`\beta` are learnable affine transform parameters of
+    :attr:`normalized_shape` if :attr:`elementwise_affine` is ``True``.
+    The standard-deviation is calculated via the biased estimator, equivalent to
+    `torch.var(input, unbiased=False)`.
+
+    .. note::
+        Unlike Batch Normalization and Instance Normalization, which applies
+        scalar scale and bias for each entire channel/plane with the
+        :attr:`affine` option, Layer Normalization applies per-element scale and
+        bias with :attr:`elementwise_affine`.
+
+    This layer uses statistics computed from input data in both training and
+    evaluation modes.
+
+    Args:
+        normalized_shape (int or list or torch.Size): input shape from an expected input
+            of size
+
+            .. math::
+                [* \times \text{normalized\_shape}[0] \times \text{normalized\_shape}[1]
+                    \times \ldots \times \text{normalized\_shape}[-1]]
+
+            If a single integer is used, it is treated as a singleton list, and this module will
+            normalize over the last dimension which is expected to be of that specific size.
+        eps: a value added to the denominator for numerical stability. Default: 1e-5
+        elementwise_affine: a boolean value that when set to ``True``, this module
+            has learnable per-element affine parameters initialized to ones (for weights)
+            and zeros (for biases). Default: ``True``.
+
+    Shape:
+        - Input: :math:`(N, *)`
+        - Output: :math:`(N, *)` (same shape as input)
+
+    Examples::
+
+        >>> input = torch.randn(20, 5, 10, 10)
+        >>> # With Learnable Parameters
+        >>> m = nn.LayerNorm(input.size()[1:])
+        >>> # Without Learnable Parameters
+        >>> m = nn.LayerNorm(input.size()[1:], elementwise_affine=False)
+        >>> # Normalize over last two dimensions
+        >>> m = nn.LayerNorm([10, 10])
+        >>> # Normalize over last dimension of size 10
+        >>> m = nn.LayerNorm(10)
+        >>> # Activating the module
+        >>> output = m(input)
+    """
+    __constants__ = ['normalized_shape', 'eps', 'elementwise_affine']
+    normalized_shape: _shape_t
+    eps: float
+    elementwise_affine: bool
+
+    def __init__(self, normalized_shape: _shape_t, threshold: float, v_reset: float, eps: float = 1e-5, affine: bool = True) -> None:
+        super().__init__()
+        if isinstance(normalized_shape, numbers.Integral):
+            normalized_shape = (normalized_shape,)
+        self.normalized_shape = tuple(normalized_shape)
+        self.threshold = threshold
+        self.v_reset = v_reset
+        self.eps = eps
+        self.affine = affine
+        if self.affine:
+            # self.weight = Parameter(torch.Tensor(*normalized_shape))
+            self.weight = Parameter(torch.Tensor(*normalized_shape))
+            self.bias = Parameter(torch.Tensor(*normalized_shape))
+        else:
+            self.register_parameter('weight', None)
+            self.register_parameter('bias', None)
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        if self.affine:
+            # nn.init.ones_(self.weight)
+            # nn.init.zeros_(self.bias)
+            nn.init.constant_(self.weight, self.threshold-self.v_reset)
+            nn.init.constant_(self.bias, self.v_reset)
+    def forward(self, input: Tensor) -> Tensor:
+        out = F.layer_norm(
+            input, self.normalized_shape, self.weight, self.bias, self.eps)
+        # out = F.layer_norm(
+        #     input, self.normalized_shape, None, None, self.eps)
+        # if self.affine:
+        #     out = self.weight * out + self.bias
+        return out
+    def extra_repr(self) -> Tensor:
+        return '{normalized_shape}, eps={eps}, ' \
+            'elementwise_affine={elementwise_affine}'.format(**self.__dict__)
 
