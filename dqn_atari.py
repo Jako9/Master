@@ -114,7 +114,7 @@ if __name__ == "__main__":
         except IndexError:
             cuda_version = float(f"{torch.cuda.get_device_capability(0)[0]}.0")
 
-    if os_name == "Linux" and cuda_version >= 7.0 and args.use_compile:
+    if os_name == "Linux" and args.use_compile: #and cuda_version >= 7.0
         q_network = torch.compile(q_network)
         target_network = torch.compile(target_network)
         print("Using Compiled Model")
