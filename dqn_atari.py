@@ -90,13 +90,13 @@ if __name__ == "__main__":
     os.makedirs(cache_folder, exist_ok=True)
 
     print(f"Using network '{args.architecture}'")
-    q_network = network_class(envs, args.total_timesteps, args.num_retrains, cache_folder=cache_folder).to(device)
+    q_network = network_class(envs, args.total_timesteps, args.num_retrains, track=args.track, cache_folder=cache_folder).to(device)
 
     assert isinstance(q_network, Plastic), "Network must inherit from Injectable"
 
     optimizer = optim.Adam(q_network.parameters(), lr=args.learning_rate)
     scaler = GradScaler()
-    target_network = network_class(envs, args.total_timesteps, args.num_retrains, cache_folder=cache_folder).to(device)
+    target_network = network_class(envs, args.total_timesteps, args.num_retrains, track=False, cache_folder=cache_folder).to(device)
 
     assert isinstance(target_network, type(q_network)), "Target network and Q Network must be of same type"
     target_network.load_state_dict(q_network.state_dict())
@@ -160,10 +160,10 @@ if __name__ == "__main__":
             else:
                 try:
                     with autocast(dtype=torch.bfloat16):
-                        q_values = q_network(torch.Tensor(obs).to(device))
+                        q_values = q_network(torch.Tensor(obs).to(device), global_step)
                 except:
                     with autocast(dtype=torch.float16):
-                        q_values = q_network(torch.Tensor(obs).to(device))
+                        q_values = q_network(torch.Tensor(obs).to(device), global_step)
                 actions = torch.argmax(q_values, dim=1).cpu().numpy()
             next_obs, rewards, terminated, truncated, infos = envs.step(actions)
 

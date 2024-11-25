@@ -9,7 +9,7 @@ class Plasticity_Injection(Large_DNN):
         self.num_actions = env.single_action_space.n
         self._init()
 
-    def _forward(self, x):
+    def _forward(self, x, global_step):
         x = self.relu(self.conv2d_1(x))
         x = self.relu(self.conv2d_2(x))
         x = self.relu(self.conv2d_3(x))

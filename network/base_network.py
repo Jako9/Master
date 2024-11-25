@@ -1,5 +1,6 @@
 import torch.nn as nn
 from abc import ABC, abstractmethod
+import wandb
 
 """
 Abstract class for all networks.
@@ -14,16 +15,17 @@ Also implement the _forward method which is the forward pass of the network.
 """
 class Plastic(ABC, nn.Module):
 
-    def __init__(self, total_steps, total_drifts, *args, **kwargs):
+    def __init__(self, total_steps, total_drifts, track, *args, **kwargs):
         super().__init__()
+        self.track = track
         self.total_steps = total_steps
         self.total_drifts = total_drifts
 
-    def forward(self, x):
-        return self._forward(x / 255.0)
+    def forward(self, x, global_step=None):
+        return self._forward(x / 255.0, global_step)
     
     @abstractmethod
-    def _forward(self, x):
+    def _forward(self, x, global_step):
         raise NotImplementedError
 
     def init_params(self, num_drifts, num_steps):
@@ -73,7 +75,7 @@ class Large_DNN(Plastic):
             self.relu
         )
 
-    def _forward(self, x):
+    def _forward(self, x, global_step):
         x = self.body(x)
         return self.head(x)
     
@@ -110,6 +112,7 @@ class Large_SNN(Plastic):
         self.pop1 = PopNorm([32, 20, 20], threshold=1, v_reset=0)
         self.pop2 = PopNorm([64, 9, 9], threshold=1, v_reset=0)
         self.pop3 = PopNorm([64, 7, 7], threshold=1, v_reset=0)
+        self.pop_fc = PopNorm(512, threshold=1, v_reset=0)
 
         self.lif1 = snn.Leaky(beta=0.95)
         self.lif2 = snn.Leaky(beta=0.95)
@@ -126,7 +129,7 @@ class Large_SNN(Plastic):
             self.lif_fc
         )
 
-    def _forward(self, x):
+    def _forward(self, x, global_step):
 
         spike_train = spikegen.rate(x, num_steps=self.num_steps)
 
@@ -137,6 +140,11 @@ class Large_SNN(Plastic):
         mem_head = self.lif_head.init_leaky()
 
         mem_out = torch.zeros(x.size(0), self.action_space).to(x.device)
+
+        spk1_average = 0
+        spk2_average = 0
+        spk3_average = 0
+        spk_fc_average = 0
 
         for step in range(self.num_steps):
             out = self.conv2d_1(spike_train[step])
@@ -153,15 +161,31 @@ class Large_SNN(Plastic):
 
             out = self.flatten(spk3)
             out = self.linear(out)
+            out = self.pop_fc(out)
+
             spk_fc, mem_fc = self.lif_fc(out, mem_fc)
 
             out = self.head(spk_fc)
 
             _, mem_head = self.lif_head(out, mem_head)
 
-            #TODO: Be able to add other pooling methods (mean, last, etc.)
+            #Only for logging purposes
+            if self.track and global_step is not None and global_step % 100 == 0:
+                spk1_average += spk1.mean().item()
+                spk2_average += spk2.mean().item()
+                spk3_average += spk3.mean().item()
+                spk_fc_average += spk_fc.mean().item()
 
+            #TODO: Be able to add other pooling methods (mean, last, etc.)
             mem_out = torch.max(mem_head, mem_out)
+
+        if self.track and global_step is not None and global_step % 100 == 0:
+            wandb.log({
+                                "spikes/layer1": spk1_average / self.num_steps,
+                                "spikes/layer2": spk2_average / self.num_steps,
+                                "spikes/layer3": spk3_average / self.num_steps,
+                                "spikes/fc": spk_fc_average / self.num_steps
+                            })
 
         return mem_out
 

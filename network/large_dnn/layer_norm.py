@@ -9,7 +9,7 @@ class Layer_Norm(Large_DNN):
         self.layer_norm_3 = nn.LayerNorm([64, 7, 7])
         self.layer_norm_4 = nn.LayerNorm(512)
 
-    def _forward(self, x):
+    def _forward(self, x, global_step):
         x = self.relu(self.layer_norm_1(self.conv2d_1(x)))
         x = self.relu(self.layer_norm_2(self.conv2d_2(x)))
         x = self.relu(self.layer_norm_3(self.conv2d_3(x)))
