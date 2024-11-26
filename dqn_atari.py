@@ -160,6 +160,7 @@ if __name__ == "__main__":
             else:
                 with autocast(dtype=torch.bfloat16):
                     q_values = q_network(torch.Tensor(obs).to(device), global_step)
+                    actions = torch.argmax(q_values, dim=1).cpu().numpy()
             next_obs, rewards, terminated, truncated, infos = envs.step(actions)
 
             #Track episodic summaries if final episode

@@ -22,7 +22,7 @@ class Plastic(ABC, nn.Module):
         self.total_drifts = total_drifts
 
     def forward(self, x, global_step=None):
-        return self._forward(x / 255.0, global_step)
+        return self._forward(x.float() / 255.0, global_step)
     
     @abstractmethod
     def _forward(self, x, global_step):
