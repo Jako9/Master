@@ -133,8 +133,8 @@ class Large_SNN(Plastic):
 
         size = x.size(0)
         x = x.unsqueeze(0).expand(10, -1, -1, -1, -1)
-        random_values = torch.rand_like(x)
-        spike_train = (random_values < x).float()
+        random_values = torch.rand_like(x).to(x.device)
+        spike_train = (random_values < x).float().to(x.device)
 
         mem1 = self.lif1.init_leaky()
         mem2 = self.lif2.init_leaky()
@@ -142,7 +142,7 @@ class Large_SNN(Plastic):
         mem_fc = self.lif_fc.init_leaky()
         mem_head = self.lif_head.init_leaky()
 
-        mem_out = torch.zeros(size, self.action_space).to(x.device).float()
+        mem_out = torch.zeros(size, self.action_space).to(x.device)
 
         spk1_average = 0
         spk2_average = 0

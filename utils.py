@@ -28,14 +28,14 @@ class Exponential_schedule():
     
 def process_infos(infos, epsilon, global_step, track):
     if "final_info" in infos:
-            for info in infos["final_info"]:
-                if "episode" not in info:
-                    continue
-                print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-                if track:
-                    wandb.log({
-                        "charts/episodic_return": info["episode"]["r"],
-                        "charts/episode_length": info["episode"]["l"],
-                        "charts/epsilon": epsilon},
-                        step=global_step)
+        for info in infos["final_info"]:
+            if "episode" not in info:
+                continue
+            print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+            if track:
+                wandb.log({
+                    "charts/episodic_return": info["episode"]["r"],
+                    "charts/episode_length": info["episode"]["l"],
+                    "charts/epsilon": epsilon},
+                    step=global_step)
     

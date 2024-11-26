@@ -151,7 +151,6 @@ if __name__ == "__main__":
         epsilon = Exponential_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps)
 
         for global_step in range(args.total_timesteps):
-
             q_network.every_step(global_step)
 
             #Exploration or exploitation
