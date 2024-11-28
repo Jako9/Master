@@ -157,9 +157,14 @@ if __name__ == "__main__":
             if random.random() < epsilon(global_step):
                 actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
             else:
-                with autocast(dtype=torch.bfloat16):
-                    q_values = q_network(torch.Tensor(obs).to(device), global_step)
-                    actions = torch.argmax(q_values, dim=1).cpu().numpy()
+                try:
+                    with autocast(dtype=torch.bfloat16):
+                        q_values = q_network(torch.Tensor(obs).to(device), global_step)
+                        actions = torch.argmax(q_values, dim=1).cpu().numpy()
+                except:
+                    with autocast(dtype=torch.float16):
+                        q_values = q_network(torch.Tensor(obs).to(device), global_step)
+                        actions = torch.argmax(q_values, dim=1).cpu().numpy()
             next_obs, rewards, terminated, truncated, infos = envs.step(actions)
 
             #Track episodic summaries if final episode
