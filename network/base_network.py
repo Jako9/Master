@@ -115,9 +115,9 @@ class Large_SNN(Plastic):
         self.pop_fc = PopNorm(512, threshold=1, v_reset=0)
 
         self.lif1 = snn.Leaky(beta=0.95)
-        self.lif2 = snn.Leaky(beta=0.7)
-        self.lif3 = snn.Leaky(beta=0.4)
-        self.lif_fc = snn.Leaky(beta=0.1)
+        self.lif2 = snn.Leaky(beta=0.95)
+        self.lif3 = snn.Leaky(beta=0.95)
+        self.lif_fc = snn.Leaky(beta=0.95)
         #TODO: Implement a real LI head instead of modifying LIF
         #self.lif_head = snn.Leaky(beta=0.95, threshold=np.iinfo(np.int32).max)
         self.head = nn.Linear(512, self.action_space)
@@ -133,9 +133,11 @@ class Large_SNN(Plastic):
     def _forward(self, x, global_step):
 
         size = x.size(0)
-        x = x.unsqueeze(0).expand(10, -1, -1, -1, -1)
+        """x = x.unsqueeze(0).expand(10, -1, -1, -1, -1)
         random_values = torch.rand_like(x).to(x.device)
-        spike_train = (random_values < x).float().to(x.device)
+        spike_train = (random_values < x).float().to(x.device)"""
+
+        spike_train = spikegen.rate(x, num_steps=self.num_steps)
 
         mem1 = self.lif1.init_leaky()
         mem2 = self.lif2.init_leaky()
@@ -143,7 +145,7 @@ class Large_SNN(Plastic):
         mem_fc = self.lif_fc.init_leaky()
         #mem_head = self.lif_head.init_leaky()
 
-        mem_out = torch.zeros(size, self.action_space).to(x.device)
+        output = torch.zeros(size, self.action_space).to(x.device)
 
         spk1_average = 0
         spk2_average = 0
@@ -169,7 +171,7 @@ class Large_SNN(Plastic):
 
             spk_fc, mem_fc = self.lif_fc(out, mem_fc)
 
-            out = self.head(spk_fc)
+            output += (self.head(spk_fc) / self.num_steps)
 
             #_, mem_head = self.lif_head(out, mem_head)
 
@@ -183,7 +185,7 @@ class Large_SNN(Plastic):
             #TODO: Be able to add other pooling methods (mean, last, etc.)
             #mem_out = torch.max(mem_head, mem_out)
         
-        out = self.head(spk_fc)
+        #out = self.head(spk_fc)
 
         if self.track and global_step is not None and global_step % 100 == 0:
             wandb.log({
@@ -193,7 +195,7 @@ class Large_SNN(Plastic):
                                 "spikes/fc": spk_fc_average / self.num_steps
                             })
 
-        return out
+        return output
 
 
 
