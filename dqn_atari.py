@@ -20,7 +20,7 @@ from network import Plastic
 from utils import parse_args, Linear_schedule, Exponential_schedule, process_infos
 from environments import Concept_Drift_Env, make_env, drifts, MnistDataset, Cifar100Dataset
 
-if __name__ == "__main__":
+def main(): 
     EVAL = False
     cfg = parse_args().config
 
@@ -165,20 +165,19 @@ if __name__ == "__main__":
                     with autocast(dtype=torch.float16):
                         q_values = q_network(torch.Tensor(obs).to(device), global_step)
                         actions = torch.argmax(q_values, dim=1).cpu().numpy()
+
+                print(q_values)
             next_obs, rewards, terminated, truncated, infos = envs.step(actions)
 
             #Track episodic summaries if final episode
             process_infos(infos, epsilon(global_step), global_step, args.track)
-            
             #Add experience to replay buffer
             real_next_obs = next_obs.copy()
             for idx, d in enumerate(truncated):
                 if d:
                     real_next_obs[idx] = infos["final_observation"][idx]
             rb.add(obs, real_next_obs, actions, rewards, terminated, infos)
-
             obs = next_obs
-
             if global_step > args.learning_starts:
                 if global_step % args.train_frequency == 0:
                     data = rb.sample(args.batch_size)
@@ -187,16 +186,13 @@ if __name__ == "__main__":
                         next_actions = q_network(data.next_observations).argmax(dim=1, keepdim=True)
                         target_max = target_network(data.next_observations).gather(1, next_actions).squeeze()
                         td_target = data.rewards.flatten() + args.gamma * target_max * (1 - data.dones.flatten())
-                    
                     old_val = q_network(data.observations).gather(1, data.actions).squeeze()
-
                     try:
                         with autocast(dtype=torch.bfloat16):
                             loss = F.mse_loss(td_target, old_val)
                     except:
                         with autocast(dtype=torch.float16):
                             loss = F.mse_loss(td_target, old_val)
-                    
 
                     if global_step % 100 == 0 and args.track:
                         wandb.log({
@@ -205,7 +201,6 @@ if __name__ == "__main__":
                             "charts/SPS": int(global_step / (time.time() - start_time))
                         },
                         step=global_step)
-
                     optimizer.zero_grad()
                     scaler.scale(loss).backward()
                     scaler.step(optimizer)
@@ -252,3 +247,8 @@ if __name__ == "__main__":
     envs.close()
     if args.track:
         wandb.finish()
+
+
+from torch.profiler import profile, ProfilerActivity, record_function
+if __name__ == "__main__":
+    main()

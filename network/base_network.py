@@ -151,7 +151,7 @@ class Large_SNN(Plastic):
         spk2_average = 0
         spk3_average = 0
         spk_fc_average = 0
-
+        
         for step in range(self.num_steps):
             out = self.conv2d_1(spike_train[step])
             out = self.pop1(out)
@@ -186,7 +186,6 @@ class Large_SNN(Plastic):
             #mem_out = torch.max(mem_head, mem_out)
         
         #out = self.head(spk_fc)
-
         if self.track and global_step is not None and global_step % 100 == 0:
             wandb.log({
                                 "spikes/layer1": spk1_average / self.num_steps,
