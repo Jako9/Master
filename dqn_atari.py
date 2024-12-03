@@ -166,7 +166,6 @@ def main():
                         q_values = q_network(torch.Tensor(obs).to(device), global_step)
                         actions = torch.argmax(q_values, dim=1).cpu().numpy()
 
-                print(q_values)
             next_obs, rewards, terminated, truncated, infos = envs.step(actions)
 
             #Track episodic summaries if final episode
