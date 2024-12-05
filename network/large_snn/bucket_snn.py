@@ -7,7 +7,7 @@ class Bucket_SNN(Large_SNN):
     def __init__(self, env, *args, **kwargs):
         super().__init__(env, *args, **kwargs)
         self.num_buckets = 101
-        self.buckets = torch.linspace(0, 5, self.num_buckets)
+        self.buckets = torch.nn.Parameter(torch.linspace(0, 5, self.num_buckets))
         self.head = torch.nn.Linear(512, self.action_space * self.num_buckets)
 
     def every_init(self):
@@ -75,7 +75,8 @@ class Bucket_SNN(Large_SNN):
                                 "spikes/layer1": spk1_average / self.num_steps,
                                 "spikes/layer2": spk2_average / self.num_steps,
                                 "spikes/layer3": spk3_average / self.num_steps,
-                                "spikes/fc": spk_fc_average / self.num_steps
+                                "spikes/fc": spk_fc_average / self.num_steps,
+                                "buckets": self.buckets
                             })
         output = output.view(size, self.action_space, self.num_buckets)
         output = torch.softmax(output, dim=2) * self.buckets
