@@ -76,7 +76,10 @@ class Bucket_SNN(Large_SNN):
                                 "spikes/layer2": spk2_average / self.num_steps,
                                 "spikes/layer3": spk3_average / self.num_steps,
                                 "spikes/fc": spk_fc_average / self.num_steps,
-                                "buckets": self.buckets
+                                "buckets/max": self.buckets.max().item(),
+                                "buckets/min": self.buckets.min().item(),
+                                "buckets/mean": self.buckets.mean().item(),
+                                "buckets/std": self.buckets.std().item()
                             })
         output = output.view(size, self.action_space, self.num_buckets)
         output = torch.softmax(output, dim=2) * self.buckets
