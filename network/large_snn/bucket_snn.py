@@ -7,7 +7,7 @@ class Bucket_SNN(Large_SNN):
     def __init__(self, env, *args, **kwargs):
         super().__init__(env, *args, **kwargs)
         self.num_buckets = 101
-        self.buckets = torch.nn.Parameter(torch.linspace(0, 5, self.num_buckets))
+        self.buckets = torch.nn.Parameter(torch.linspace(0, 10, self.num_buckets))
         self.head = torch.nn.Linear(512, self.action_space * self.num_buckets)
 
     def every_init(self):
