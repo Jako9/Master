@@ -1,7 +1,8 @@
 from ..base_network import Large_SNN
 import torch
 from snntorch import spikegen
-import wandb
+from utils import add_log
+
 
 class Bucket_SNN(Large_SNN):
     def __init__(self, env, *args, **kwargs):
@@ -71,16 +72,15 @@ class Bucket_SNN(Large_SNN):
         
         #out = self.head(spk_fc)
         if self.track and global_step is not None and global_step % 100 == 0:
-            wandb.log({
-                                "spikes/layer1": spk1_average / self.num_steps,
-                                "spikes/layer2": spk2_average / self.num_steps,
-                                "spikes/layer3": spk3_average / self.num_steps,
-                                "spikes/fc": spk_fc_average / self.num_steps,
-                                "buckets/max": self.buckets.max().item(),
-                                "buckets/min": self.buckets.min().item(),
-                                "buckets/mean": self.buckets.mean().item(),
-                                "buckets/std": self.buckets.std().item()
-                            })
+            add_log("spikes/layer1", spk1_average / self.num_steps)
+            add_log("spikes/layer2", spk2_average / self.num_steps)
+            add_log("spikes/layer3", spk3_average / self.num_steps)
+            add_log("spikes/fc", spk_fc_average / self.num_steps)
+
+            add_log("buckets/max", self.buckets.max().item())
+            add_log("buckets/min", self.buckets.min().item())
+            add_log("buckets/mean", self.buckets.mean().item())
+            add_log("buckets/std", self.buckets.std().item())
         output = output.view(size, self.action_space, self.num_buckets)
         output = torch.softmax(output, dim=2) * self.buckets
         output = output.sum(dim=2)

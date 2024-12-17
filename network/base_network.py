@@ -83,6 +83,7 @@ import snntorch as snn
 import torch
 import numpy as np
 from snntorch import spikegen
+from utils import add_log
 
 """
 Standard large deep spiking neural network with 3 convolutional layers and 2 linear layers.
@@ -187,12 +188,10 @@ class Large_SNN(Plastic):
         
         #out = self.head(spk_fc)
         if self.track and global_step is not None and global_step % 100 == 0:
-            wandb.log({
-                                "spikes/layer1": spk1_average / self.num_steps,
-                                "spikes/layer2": spk2_average / self.num_steps,
-                                "spikes/layer3": spk3_average / self.num_steps,
-                                "spikes/fc": spk_fc_average / self.num_steps
-                            })
+            add_log("spikes/layer1", spk1_average / self.num_steps)
+            add_log("spikes/layer2", spk2_average / self.num_steps)
+            add_log("spikes/layer3", spk3_average / self.num_steps)
+            add_log("spikes/fc", spk_fc_average / self.num_steps)
 
         return output
 

@@ -17,7 +17,7 @@ from stable_baselines3.common.buffers import ReplayBuffer
 
 import network
 from network import Plastic
-from utils import parse_args, Linear_schedule, Exponential_schedule, process_infos
+from utils import parse_args, Linear_schedule, Exponential_schedule, process_infos, log, add_log
 from environments import Concept_Drift_Env, make_env, drifts, MnistDataset, Cifar100Dataset
 
 def main(): 
@@ -152,6 +152,8 @@ def main():
 
         for global_step in range(args.total_timesteps):
             q_network.every_step(global_step)
+            if args.track:
+                add_log("charts/global_step", global_step)
 
             #Exploration or exploitation
             if random.random() < epsilon(global_step):
@@ -194,12 +196,10 @@ def main():
                             loss = F.mse_loss(td_target, old_val)
 
                     if global_step % 100 == 0 and args.track:
-                        wandb.log({
-                            "losses/td_loss": loss,
-                            "losses/q_values": old_val.mean().item(),
-                            "charts/SPS": int(global_step / (time.time() - start_time))
-                        },
-                        step=global_step)
+                        add_log("losses/td_loss", loss)
+                        add_log("losses/q_values", old_val.mean().item())
+                        add_log("charts/SPS", int(global_step / (time.time() - start_time)))
+
                     optimizer.zero_grad()
                     scaler.scale(loss).backward()
                     scaler.step(optimizer)
@@ -210,7 +210,8 @@ def main():
                         target_network_param.data.copy_(
                             args.tau * q_network_param.data + (1.0 - args.tau) * target_network_param.data
                         )
-
+            if args.track:
+                log()
         #--After training--
         rb.reset()
         if args.save_model:
@@ -238,7 +239,8 @@ def main():
             for idx, episodic_return in enumerate(episodic_returns):
                 print(f"eval_episode={idx}, episodic_return={episodic_return}")
                 if args.track:
-                    wandb.log({"eval/episodic_return": episodic_return}, step=idx)
+                    add_log("charts/episodic_return", episodic_return)
+                    log()
 
     #--After all concept drifts--
     import shutil
