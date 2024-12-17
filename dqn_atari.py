@@ -153,7 +153,7 @@ def main():
         for global_step in range(args.total_timesteps):
             q_network.every_step(global_step)
             if args.track:
-                add_log("charts/global_step", global_step)
+                add_log("charts/total_step", global_step * concept_drift)
 
             #Exploration or exploitation
             if random.random() < epsilon(global_step):
