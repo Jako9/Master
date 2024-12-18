@@ -47,7 +47,7 @@ class Add_Classes(Concept_Drift_Env):
         self.max_classes = max(self.labels) + 1
     
     def inject_drift(self):
-        self.num_classes += 5
+        self.num_classes += 10
 
         if self.num_classes > self.max_classes:
             gym.logger.warn("All classes have already been added.. No more classes to add")
