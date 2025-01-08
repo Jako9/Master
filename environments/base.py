@@ -69,7 +69,7 @@ class Concept_Drift_Env(gym.Env, ABC):
         self.accumulated_reward = 0
 
         self.observation_space = spaces.Box(low=0, high=255, shape=(28,28), dtype='uint8')
-        self.action_space = spaces.Discrete(10)
+        self.action_space = spaces.Discrete(max(self.labels) + 1)
 
         
         self.metadata = {
