@@ -18,7 +18,7 @@ from stable_baselines3.common.buffers import ReplayBuffer
 import network
 from network import Plastic
 from utils import parse_args, Linear_schedule, Exponential_schedule, process_infos, log, add_log
-from environments import Concept_Drift_Env, make_env, drifts, MnistDataset, Cifar100Dataset
+from environments import Concept_Drift_Env, make_env, drifts, MnistDataset, Cifar100Dataset, CompositeDataset
 
 def main(): 
     EVAL = False
@@ -72,6 +72,8 @@ def main():
         dataset = MnistDataset()
     elif args.dataset == "cifar100":
         dataset = Cifar100Dataset()
+    elif args.dataset == "composite":
+        dataset = CompositeDataset()
     else:
         raise ValueError(f"Dataset '{args.dataset}' not supported")
 

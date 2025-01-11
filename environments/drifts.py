@@ -37,8 +37,6 @@ class Shuffle_Pixels(Concept_Drift_Env):
     def inject_drift(self):
         np.random.shuffle(self.data)    
 
-
-from gymnasium import spaces
 class Add_Classes(Concept_Drift_Env):
     def __init__(self, dataset, max_episode_steps = 200) -> None:
         super().__init__(dataset, max_episode_steps)
@@ -56,3 +54,15 @@ class Add_Classes(Concept_Drift_Env):
         
         self.data = self.all_data[self.all_labels < self.num_classes]
         self.labels = self.all_labels[self.all_labels < self.num_classes]
+
+from environments.datasets import CompositeDataset
+class Shift_Objectives(Concept_Drift_Env):
+    def __init__(self, dataset, max_episode_steps = 200) -> None:
+        super().__init__(dataset, max_episode_steps)
+        assert type(dataset) == CompositeDataset, "This drift is only applicable to Composites"
+        self.dataset = dataset
+    
+    def inject_drift(self):
+        self.dataset.next_objective()
+        self.data = self.dataset.data
+        self.labels = self.dataset.targets
