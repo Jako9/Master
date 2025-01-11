@@ -18,6 +18,8 @@ class CompositeDataset(base_dataset):
             self.data = x_train[np.isin(y_train, selected_classes)]
             self.targets = np.array(y_train)[np.isin(y_train, selected_classes)]
 
+            self.targets = np.array([np.where(selected_classes == i)[0][0] for i in self.targets])
+
 
             self.class_names = datasets.CIFAR100(root=".", train=True, download=True).classes
             self.class_names = [self.class_names[i] for i in selected_classes]
