@@ -1,7 +1,35 @@
 import argparse
 import wandb
+from torch.optim.lr_scheduler import _LRScheduler
+from torch.optim.optimizer import Optimizer
 
 loggin_dict = {}
+
+class StepwiseConstantLR(_LRScheduler):
+    def __init__(self, optimizer: Optimizer, lr_schedule: list, train_frequency: int, last_epoch: int = -1):
+        """
+        Custom learning rate scheduler for constant learning rate with switches.
+
+        Args:
+            optimizer (Optimizer): Wrapped optimizer.
+            lr_schedule (list): List of (timestep, lr) pairs, sorted by timestep.
+                                E.g., [(0, 0.1), (10, 0.01), (20, 0.001)]
+            last_epoch (int): The index of the last epoch. Defaults to -1.
+        """
+        if isinstance(lr_schedule, float):
+            lr_schedule = [(0, lr_schedule)]
+        else:
+            lr_schedule = [(d['timestep'] / train_frequency, d['lr']) for d in lr_schedule]
+        self.lr_schedule = sorted(lr_schedule, key=lambda x: x[0])
+        super().__init__(optimizer, last_epoch)
+
+    def get_lr(self):
+        current_epoch = self.last_epoch
+        for timestep, lr in reversed(self.lr_schedule):
+            if current_epoch >= timestep:
+                return [lr for _ in self.base_lrs]
+        # Default to the first learning rate if no timestep is reached
+        return [self.lr_schedule[0][1] for _ in self.base_lrs]
 
 
 def parse_args():

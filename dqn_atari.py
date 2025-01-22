@@ -17,7 +17,7 @@ from stable_baselines3.common.buffers import ReplayBuffer
 
 import network
 from network import Plastic
-from utils import parse_args, Linear_schedule, Exponential_schedule, process_infos, log, add_log
+from utils import parse_args, Linear_schedule, Exponential_schedule, process_infos, log, add_log, StepwiseConstantLR
 from environments import Concept_Drift_Env, make_env, drifts, MnistDataset, Cifar100Dataset, CompositeDataset
 
 def main(): 
@@ -96,7 +96,6 @@ def main():
 
     assert isinstance(q_network, Plastic), "Network must inherit from Injectable"
 
-    optimizer = optim.Adam(q_network.parameters(), lr=args.learning_rate)
     scaler = GradScaler()
     target_network = network_class(envs, args.total_timesteps, args.num_retrains, track=False, cache_folder=cache_folder).to(device)
 
@@ -124,6 +123,16 @@ def main():
         print(f"OS '{os_name}' or GPU CUDA Capability '{cuda_version}' not supported for model compilation") if args.use_compile else print("Not using Compiled Model")
 
     for concept_drift in range(args.num_retrains):
+
+        #constant learning rate when args.learning_rate is a float, otherwise use a scedueld learning rate
+        if isinstance(args.learning_rate, float):
+            rate= args.learning_rate
+        else:
+            rate = args.learning_rate[0]['lr']
+
+        optimizer = optim.Adam(q_network.parameters(), lr=rate)
+
+        scheduler = StepwiseConstantLR(optimizer, args.learning_rate, args.train_frequency)
 
         q_network.every_drift(concept_drift)
 
@@ -201,10 +210,12 @@ def main():
                         add_log("losses/td_loss", loss)
                         add_log("losses/q_values", old_val.mean().item())
                         add_log("charts/SPS", int(global_step / (time.time() - start_time)))
+                        add_log("charts/learning_rate", scheduler.get_lr()[0])
 
                     optimizer.zero_grad()
                     scaler.scale(loss).backward()
                     scaler.step(optimizer)
+                    scheduler.step()
                     scaler.update()
 
                 if global_step % args.target_network_update_freq == 0:
