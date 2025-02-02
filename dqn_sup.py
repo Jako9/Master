@@ -121,26 +121,46 @@ def main():
 
     x_train = np.mean(x_train, axis=3)
 
+    x_test = datasets.CIFAR100(root=".", train=False, download=True).data
+    y_test = datasets.CIFAR100(root=".", train=False, download=True).targets
+
+    x_test = np.mean(x_test, axis=3)
+
     #Build dataloader
     from torch.utils.data import DataLoader, TensorDataset
     import torch.nn as nn
 
     x_train = torch.tensor(x_train).float()
-    print(x_train.shape)
     x_train = x_train.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3)
     #reshape the image to be (4, x, 32, 32) -> (4, x, 84, 84)
     x_train = F.interpolate(x_train, size=(84, 84), mode="bilinear", align_corners=False)
-    print(x_train.shape)
     y_train = torch.tensor(y_train).long()
+
+    x_test = torch.tensor(x_test).float()
+    x_test = x_test.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3)
+    #reshape the image to be (4, x, 32, 32) -> (4, x, 84, 84)
+    x_test = F.interpolate(x_test, size=(84, 84), mode="bilinear", align_corners=False)
+    y_test = torch.tensor(y_test).long()
+
+    dataset_total = TensorDataset(x_test, y_test)
+    dataloader_total = DataLoader(dataset_total, batch_size=args.batch_size, shuffle=False)
 
     for concept_drift in range(args.num_retrains):
 
         
-        x_samples = x_train[y_train < 10 * (concept_drift + 1)]
-        y_samples = y_train[y_train < 10 * (concept_drift + 1)]
+        x_samples = x_train[y_train < (10 * (concept_drift + 1))]
+        y_samples = y_train[y_train < (10 * (concept_drift + 1))]
+        y_samples_sorted = torch.argsort(torch.unique(y_samples, return_counts=True)[1], descending=True)
+        print(y_samples_sorted)
+
+        x_samples_test = x_test[y_test < (10 * (concept_drift + 1))]
+        y_samples_test = y_test[y_test < (10 * (concept_drift + 1))]
 
         dataset = TensorDataset(x_samples, y_samples)
         dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
+
+        dataset_test = TensorDataset(x_samples_test, y_samples_test)
+        dataloader_test = DataLoader(dataset_test, batch_size=args.batch_size, shuffle=False)
 
         #constant learning rate when args.learning_rate is a float, otherwise use a scedueld learning rate
         if isinstance(args.learning_rate, float):
@@ -168,7 +188,6 @@ def main():
             if args.track:
                 add_log("charts/total_step", global_step + concept_drift * args.total_timesteps)
 
-            accuracy = 0
             for batch_idx, (inputs, targets) in enumerate(dataloader):
                 global_step += 1
                 if global_step > args.total_timesteps / args.train_frequency:
@@ -177,8 +196,6 @@ def main():
                 inputs, targets = inputs.to(device), targets.to(device)
                 outputs = q_network(inputs)
                 loss = criterion(outputs, targets)
-                accuracy += (outputs.argmax(1) == targets).float().sum()
-                current_accuracy = accuracy / ((batch_idx + 1) * args.batch_size)
 
                 #Track episodic summaries if final episode
                 process_infos({}, epsilon(global_step), global_step, args.track)
@@ -187,8 +204,6 @@ def main():
                     add_log("losses/td_loss", loss)
                     add_log("charts/SPS", int(global_step / (time.time() - start_time)))
                     add_log("charts/learning_rate", scheduler.get_lr()[0])
-                    add_log("losses/accuracy", current_accuracy * 100)
-
 
                 optimizer.zero_grad()
                 scaler.scale(loss).backward()
@@ -197,6 +212,31 @@ def main():
                 scaler.update()
                 if args.track:
                     log()
+
+
+            accuracy_current = 0
+            accuracy_total = 0
+            with torch.no_grad():
+                for batch_idx, (inputs, targets) in enumerate(dataloader_test):
+                    inputs, targets = inputs.to(device), targets.to(device)
+                    outputs = q_network(inputs)
+                    accuracy_current += (outputs.argmax(1) == targets).float().mean().item()
+                
+                for batch_idx, (inputs, targets) in enumerate(dataloader_total):
+                    inputs, targets = inputs.to(device), targets.to(device)
+                    outputs = q_network(inputs)
+                    accuracy_total += (outputs.argmax(1) == targets).float().mean().item()
+            accuracy_current /= len(dataloader_test)
+            accuracy_total /= len(dataloader_total)
+            add_log("losses/accuracy_current", accuracy_current)
+            add_log("losses/accuracy_total", accuracy_total)
+            print(f"Step {global_step}, Loss: {loss}, Current Acc: {accuracy_current * 100}%, Total Acc: {accuracy_total * 100}%")
+
+        del dataset
+        del dataloader
+        del dataset_test
+        del dataloader_test
+            
         #--After training--
         if args.save_model:
             model_path = f"runs/{run_name}/{args.exp_name}.pth"
