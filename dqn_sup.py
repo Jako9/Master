@@ -183,6 +183,7 @@ def main():
         #Could also use linear schedule
         epsilon = Exponential_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps)
         global_step = 0
+        best_acc = 0
         while global_step < args.total_timesteps / args.train_frequency:
             q_network.every_step(global_step)
             if args.track:
@@ -226,11 +227,16 @@ def main():
                     inputs, targets = inputs.to(device), targets.to(device)
                     outputs = q_network(inputs)
                     accuracy_total += (outputs.argmax(1) == targets).float().mean().item()
-            accuracy_current /= len(dataloader_test)
-            accuracy_total /= len(dataloader_total)
+            accuracy_current /= len(dataloader_test) * 100
+            accuracy_total /= len(dataloader_total) * 100
             add_log("losses/accuracy_current", accuracy_current)
             add_log("losses/accuracy_total", accuracy_total)
-            print(f"Step {global_step}, Loss: {loss}, Current Acc: {accuracy_current * 100}%, Total Acc: {accuracy_total * 100}%")
+            print(f"Step {global_step}, Loss: {loss}, Current Acc: {accuracy_current}%, Total Acc: {accuracy_total}%")
+            if accuracy_current > best_acc:
+                best_acc = accuracy_current
+            else:
+                print(f"Early stopping for {accuracy_current}% < {best_acc}%")
+                break
 
         del dataset
         del dataloader
