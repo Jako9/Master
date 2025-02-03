@@ -217,6 +217,7 @@ def main():
 
             accuracy_current = 0
             accuracy_total = 0
+            accuracy_train = 0
             with torch.no_grad():
                 for batch_idx, (inputs, targets) in enumerate(dataloader_test):
                     inputs, targets = inputs.to(device), targets.to(device)
@@ -227,10 +228,19 @@ def main():
                     inputs, targets = inputs.to(device), targets.to(device)
                     outputs = q_network(inputs)
                     accuracy_total += (outputs.argmax(1) == targets).float().mean().item()
+
+                for batch_idx, (inputs, targets) in enumerate(dataloader):
+                    inputs, targets = inputs.to(device), targets.to(device)
+                    outputs = q_network(inputs)
+                    accuracy_train += (outputs.argmax(1) == targets).float().mean().item()
+
             accuracy_current /= len(dataloader_test) * 100
             accuracy_total /= len(dataloader_total) * 100
+            accuracy_train /= len(dataloader) * 100
             add_log("losses/accuracy_current", accuracy_current)
             add_log("losses/accuracy_total", accuracy_total)
+            add_log("losses/accuracy_train", accuracy_train)
+            
             print(f"Step {global_step}, Loss: {loss}, Current Acc: {accuracy_current}%, Total Acc: {accuracy_total}%")
             if accuracy_current > best_acc:
                 best_acc = accuracy_current
