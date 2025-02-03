@@ -207,6 +207,7 @@ def main():
                     add_log("losses/td_loss", loss)
                     add_log("charts/SPS", int(global_step / (time.time() - start_time)))
                     add_log("charts/learning_rate", scheduler.get_lr()[0])
+                    add_log("charts/concept_drift", concept_drift)
 
                 optimizer.zero_grad()
                 scaler.scale(loss).backward()
