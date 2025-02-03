@@ -144,7 +144,7 @@ def main():
 
     dataset_total = TensorDataset(x_test, y_test)
     dataloader_total = DataLoader(dataset_total, batch_size=args.batch_size, shuffle=False)
-    EPSILON = 2
+    EPSILON = 5
 
     for concept_drift in range(args.num_retrains):
 
@@ -185,8 +185,8 @@ def main():
         epsilon = Exponential_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps)
         global_step = 0
         best_acc = 0
-        early_stopping = False
-        while global_step < args.total_timesteps / args.train_frequency and not early_stopping:
+        q_network.load_state_dict(torch.load(f"{cache_folder}/{args.exp_name}_best.pth") if os.path.exists(f"{cache_folder}/{args.exp_name}_best.pth") else q_network.state_dict())
+        while global_step < args.total_timesteps / args.train_frequency:
             q_network.every_step(global_step)
             if args.track:
                 add_log("charts/total_step", global_step + concept_drift * args.total_timesteps)
@@ -246,13 +246,10 @@ def main():
             print(f"Step {global_step}, Loss: {loss}, Current Acc: {accuracy_current}%, Total Acc: {accuracy_total}%")
             if accuracy_current > best_acc:
                 best_acc = accuracy_current
+                print("New best accuracy.. Saving model")
+                torch.save(q_network.state_dict(), f"{cache_folder}/{args.exp_name}_best.pth")
 
-            elif accuracy_current + EPSILON > best_acc:
-                pass
-            else:
-                print(f"Early stopping for {accuracy_current}% < {best_acc}%")
-                early_stopping = True
-
+        print(f"END OF CONCEPT DRIFT.. Best accuracy: {best_acc}%")
         del dataset
         del dataloader
         del dataset_test
