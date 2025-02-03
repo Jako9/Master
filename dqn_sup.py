@@ -236,9 +236,9 @@ def main():
                     outputs = q_network(inputs)
                     accuracy_train += (outputs.argmax(1) == targets).float().mean().item()
 
-            accuracy_current /= len(dataloader_test) * 100
-            accuracy_total /= len(dataloader_total) * 100
-            accuracy_train /= len(dataloader) * 100
+            accuracy_current *= (100 / len(dataloader_test))
+            accuracy_total *= (100 / len(dataloader_total))
+            accuracy_train *= (100 / len(dataloader))
             add_log("losses/accuracy_current", accuracy_current)
             add_log("losses/accuracy_total", accuracy_total)
             add_log("losses/accuracy_train", accuracy_train)
