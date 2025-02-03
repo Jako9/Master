@@ -144,6 +144,7 @@ def main():
 
     dataset_total = TensorDataset(x_test, y_test)
     dataloader_total = DataLoader(dataset_total, batch_size=args.batch_size, shuffle=False)
+    EPSILON = 2
 
     for concept_drift in range(args.num_retrains):
 
@@ -184,7 +185,8 @@ def main():
         epsilon = Exponential_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps)
         global_step = 0
         best_acc = 0
-        while global_step < args.total_timesteps / args.train_frequency:
+        early_stopping = False
+        while global_step < args.total_timesteps / args.train_frequency and not early_stopping:
             q_network.every_step(global_step)
             if args.track:
                 add_log("charts/total_step", global_step + concept_drift * args.total_timesteps)
@@ -244,9 +246,12 @@ def main():
             print(f"Step {global_step}, Loss: {loss}, Current Acc: {accuracy_current}%, Total Acc: {accuracy_total}%")
             if accuracy_current > best_acc:
                 best_acc = accuracy_current
+
+            elif accuracy_current + EPSILON > best_acc:
+                pass
             else:
                 print(f"Early stopping for {accuracy_current}% < {best_acc}%")
-                break
+                early_stopping = True
 
         del dataset
         del dataloader
