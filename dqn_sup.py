@@ -245,7 +245,7 @@ def main():
             add_log("losses/accuracy_train", accuracy_train)
             
             print(f"Step {global_step}, Loss: {loss}, Current Acc: {accuracy_current}%, Total Acc: {accuracy_total}%")
-            if accuracy_current > best_acc:
+            if accuracy_current > best_acc and args.early_stopping:
                 best_acc = accuracy_current
                 print("New best accuracy.. Saving model")
                 torch.save(q_network.state_dict(), f"{cache_folder}/{args.exp_name}_best.pth")
