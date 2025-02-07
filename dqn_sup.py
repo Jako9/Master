@@ -154,6 +154,8 @@ def main():
         y_samples_sorted = torch.argsort(torch.unique(y_samples, return_counts=True)[1], descending=True)
         print(y_samples_sorted)
 
+        current_max_class = y_samples_sorted[-1]
+
         x_samples_test = x_test[y_test < (10 * (concept_drift + 1))]
         y_samples_test = y_test[y_test < (10 * (concept_drift + 1))]
 
@@ -185,7 +187,8 @@ def main():
         epsilon = Exponential_schedule(args.start_e, args.end_e, args.exploration_fraction * args.total_timesteps)
         global_step = 0
         best_acc = 0
-        q_network.load_state_dict(torch.load(f"{cache_folder}/{args.exp_name}_best.pth") if os.path.exists(f"{cache_folder}/{args.exp_name}_best.pth") else q_network.state_dict())
+        if args.early_stopping:
+            q_network.load_state_dict(torch.load(f"{cache_folder}/{args.exp_name}_best.pth") if os.path.exists(f"{cache_folder}/{args.exp_name}_best.pth") else q_network.state_dict())
         while global_step < args.total_timesteps / args.train_frequency:
             q_network.every_step(global_step)
             if args.track:
@@ -198,7 +201,12 @@ def main():
                 # Move inputs and targets to the same device as the model (if using GPU)
                 inputs, targets = inputs.to(device), targets.to(device)
                 outputs = q_network(inputs)
-                loss = criterion(outputs, targets)
+                #create output mask to only select the first "current_max_class" output neurons
+                mask = torch.zeros_like(outputs, dtype=torch.bool).to(device)
+                mask[:, :current_max_class] = True
+
+                masked_outputs = torch.where(mask, outputs, torch.tensor(-float('inf')).to(device))
+                loss = criterion(masked_outputs, targets)
 
                 #Track episodic summaries if final episode
                 process_infos({}, epsilon(global_step), global_step, args.track)
