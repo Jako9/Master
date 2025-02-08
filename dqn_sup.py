@@ -154,7 +154,8 @@ def main():
         y_samples_sorted = torch.argsort(torch.unique(y_samples, return_counts=True)[1], descending=True)
         print(y_samples_sorted)
 
-        current_max_class = y_samples_sorted[-1]
+        current_max_class = torch.max(y_samples)
+        print(f"Current max class: {current_max_class}")
 
         x_samples_test = x_test[y_test < (10 * (concept_drift + 1))]
         y_samples_test = y_test[y_test < (10 * (concept_drift + 1))]
@@ -251,6 +252,7 @@ def main():
             add_log("losses/accuracy_current", accuracy_current)
             add_log("losses/accuracy_total", accuracy_total)
             add_log("losses/accuracy_train", accuracy_train)
+            add_log("losses/max_class", current_max_class)
             
             print(f"Step {global_step}, Loss: {loss}, Current Acc: {accuracy_current}%, Total Acc: {accuracy_total}%")
             if accuracy_current > best_acc and args.early_stopping:
