@@ -206,7 +206,8 @@ def main():
                 mask = torch.zeros_like(outputs, dtype=torch.bool).to(device)
                 mask[:, :current_max_class] = True
 
-                masked_outputs = torch.where(mask, outputs, torch.tensor(-float('inf')).to(device))
+                masked_outputs = torch.where(mask, outputs, torch.tensor(-1e-9).to(device))
+                
                 loss = criterion(masked_outputs, targets)
 
                 #Track episodic summaries if final episode
