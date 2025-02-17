@@ -23,6 +23,44 @@ def main():
     EVAL = False
     cfg = parse_args().config
 
+    class Cifar10():
+        def __init__(self):
+            self.x_train = datasets.CIFAR100(root=".", train=True, download=True).data
+            self.y_train = datasets.CIFAR100(root=".", train=True, download=True).targets
+            self.x_test = datasets.CIFAR100(root=".", train=False, download=True).data
+            self.y_test = datasets.CIFAR100(root=".", train=False, download=True).targets
+
+            self.x_test = np.mean(self.x_test, axis=3).astype(np.uint8)
+
+            #Remove color channel from data
+            self.x_train = np.mean(self.x_train, axis=3).astype(np.uint8)
+
+            selected_classes = np.random.choice(np.max(self.y_train), 20, replace=False)
+
+            self.data = self.x_train[np.isin(self.y_train, selected_classes)]
+            self.data_test = self.x_test[np.isin(self.y_test, selected_classes)]
+            self.targets = np.array(self.y_train)[np.isin(self.y_train, selected_classes)]
+            self.targets_test = np.array(self.y_test)[np.isin(self.y_test, selected_classes)]
+
+            self.targets = np.array([np.where(selected_classes == i)[0][0] for i in self.targets])
+            self.targets_test = np.array([np.where(selected_classes == i)[0][0] for i in self.targets_test])
+
+
+            self.class_names = datasets.CIFAR100(root=".", train=True, download=True).classes
+            self.class_names = [self.class_names[i] for i in selected_classes]
+
+            self.x_train = torch.tensor(self.data).float()
+            self.x_train = self.x_train.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3)
+            #reshape the image to be (4, x, 32, 32) -> (4, x, 84, 84)
+            self.x_train = F.interpolate(self.x_train, size=(84, 84), mode="bilinear", align_corners=False)
+            self.y_train = torch.tensor(self.targets).long()
+
+            self.x_test = torch.tensor(self.data_test).float()
+            self.x_test = self.x_test.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3)
+            #reshape the image to be (4, x, 32, 32) -> (4, x, 84, 84)
+            self.x_test = F.interpolate(self.x_test, size=(84, 84), mode="bilinear", align_corners=False)
+            self.y_test = torch.tensor(self.targets_test).long()
+
     torch.set_float32_matmul_precision("medium")
 
 
@@ -116,48 +154,27 @@ def main():
         print(f"OS '{os_name}' or GPU CUDA Capability '{cuda_version}' not supported for model compilation") if args.use_compile else print("Not using Compiled Model")
 
     from torchvision import datasets
-    x_train = datasets.CIFAR100(root=".", train=True, download=True).data
-    y_train = datasets.CIFAR100(root=".", train=True, download=True).targets
+    all_datasets = []
+    for _ in range(20):
+        all_datasets.append(Cifar10())
 
-    x_train = np.mean(x_train, axis=3)
-
-    x_test = datasets.CIFAR100(root=".", train=False, download=True).data
-    y_test = datasets.CIFAR100(root=".", train=False, download=True).targets
-
-    x_test = np.mean(x_test, axis=3)
-
-    #Build dataloader
+    #Build dataloaders
     from torch.utils.data import DataLoader, TensorDataset
     import torch.nn as nn
-
-    x_train = torch.tensor(x_train).float()
-    x_train = x_train.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3)
-    #reshape the image to be (4, x, 32, 32) -> (4, x, 84, 84)
-    x_train = F.interpolate(x_train, size=(84, 84), mode="bilinear", align_corners=False)
-    y_train = torch.tensor(y_train).long()
-
-    x_test = torch.tensor(x_test).float()
-    x_test = x_test.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3)
-    #reshape the image to be (4, x, 32, 32) -> (4, x, 84, 84)
-    x_test = F.interpolate(x_test, size=(84, 84), mode="bilinear", align_corners=False)
-    y_test = torch.tensor(y_test).long()
-
-    dataset_total = TensorDataset(x_test, y_test)
-    dataloader_total = DataLoader(dataset_total, batch_size=args.batch_size, shuffle=False)
 
     for concept_drift in range(args.num_retrains):
 
         
-        x_samples = x_train[y_train < (10 * (concept_drift + 1))]
-        y_samples = y_train[y_train < (10 * (concept_drift + 1))]
+        x_samples = all_datasets[concept_drift % len(all_datasets)].x_train
+        y_samples = all_datasets[concept_drift % len(all_datasets)].y_train
         y_samples_sorted = torch.argsort(torch.unique(y_samples, return_counts=True)[1], descending=True)
         print(y_samples_sorted)
 
         current_max_class = torch.max(y_samples)
         print(f"Current max class: {current_max_class}")
 
-        x_samples_test = x_test[y_test < (10 * (concept_drift + 1))]
-        y_samples_test = y_test[y_test < (10 * (concept_drift + 1))]
+        x_samples_test = all_datasets[concept_drift].x_test
+        y_samples_test = all_datasets[concept_drift].y_test
 
         dataset = TensorDataset(x_samples, y_samples)
         dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
@@ -228,18 +245,12 @@ def main():
 
 
             accuracy_current = 0
-            accuracy_total = 0
             accuracy_train = 0
             with torch.no_grad():
                 for batch_idx, (inputs, targets) in enumerate(dataloader_test):
                     inputs, targets = inputs.to(device), targets.to(device)
                     outputs = q_network(inputs)
                     accuracy_current += (outputs.argmax(1) == targets).float().mean().item()
-                
-                for batch_idx, (inputs, targets) in enumerate(dataloader_total):
-                    inputs, targets = inputs.to(device), targets.to(device)
-                    outputs = q_network(inputs)
-                    accuracy_total += (outputs.argmax(1) == targets).float().mean().item()
 
                 for batch_idx, (inputs, targets) in enumerate(dataloader):
                     inputs, targets = inputs.to(device), targets.to(device)
@@ -247,14 +258,12 @@ def main():
                     accuracy_train += (outputs.argmax(1) == targets).float().mean().item()
 
             accuracy_current *= (100 / len(dataloader_test))
-            accuracy_total *= (100 / len(dataloader_total))
             accuracy_train *= (100 / len(dataloader))
             add_log("losses/accuracy_current", accuracy_current)
-            add_log("losses/accuracy_total", accuracy_total)
             add_log("losses/accuracy_train", accuracy_train)
             add_log("losses/max_class", current_max_class)
             
-            print(f"Step {global_step}, Loss: {loss}, Current Acc: {accuracy_current}%, Total Acc: {accuracy_total}%")
+            print(f"Step {global_step}, Loss: {loss}, Current Acc: {accuracy_current}%")
             if accuracy_current > best_acc and args.early_stopping:
                 best_acc = accuracy_current
                 print("New best accuracy.. Saving model")
