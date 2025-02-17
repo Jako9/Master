@@ -125,6 +125,9 @@ def main():
     print(f"Using network '{args.architecture}'")
     q_network = network_class(envs, args.total_timesteps, args.num_retrains, track=args.track, cache_folder=cache_folder).to(device)
 
+    print(q_network)
+    exit(0)
+
     assert isinstance(q_network, Plastic), "Network must inherit from Injectable"
 
     scaler = GradScaler()
