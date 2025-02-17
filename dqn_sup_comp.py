@@ -104,14 +104,7 @@ def main():
 
     print(f"Using device {device}")
 
-    if args.dataset == "mnist":
-        dataset = MnistDataset()
-    elif args.dataset == "cifar100":
-        dataset = Cifar100Dataset()
-    elif args.dataset == "composite":
-        dataset = CompositeDataset()
-    else:
-        raise ValueError(f"Dataset '{args.dataset}' not supported")
+    dataset = MnistDataset()
 
     envs = gym.vector.SyncVectorEnv(
         [make_env(f"{args.exp_name}", args.seed + i, i, dataset, args.capture_video, run_name, args.video_path) for i in range(args.num_envs)]
@@ -168,14 +161,13 @@ def main():
         
         x_samples = all_datasets[concept_drift % len(all_datasets)].x_train
         y_samples = all_datasets[concept_drift % len(all_datasets)].y_train
-        y_samples_sorted = torch.argsort(torch.unique(y_samples, return_counts=True)[1], descending=True)
-        print(y_samples_sorted)
+        print(torch.unique(y_samples, return_counts=False))
 
         current_max_class = torch.max(y_samples)
         print(f"Current max class: {current_max_class}")
 
-        x_samples_test = all_datasets[concept_drift].x_test
-        y_samples_test = all_datasets[concept_drift].y_test
+        x_samples_test = all_datasets[concept_drift % len(all_datasets)].x_test
+        y_samples_test = all_datasets[concept_drift % len(all_datasets)].y_test
 
         dataset = TensorDataset(x_samples, y_samples)
         dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
