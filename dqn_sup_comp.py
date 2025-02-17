@@ -21,21 +21,24 @@ from environments import Concept_Drift_Env, make_env, drifts, MnistDataset, Cifa
 
 def main(): 
     EVAL = False
+    CLASSES = 20
     cfg = parse_args().config
 
     class Cifar10():
         def __init__(self):
-            self.x_train = datasets.CIFAR100(root=".", train=True, download=True).data
-            self.y_train = datasets.CIFAR100(root=".", train=True, download=True).targets
-            self.x_test = datasets.CIFAR100(root=".", train=False, download=True).data
-            self.y_test = datasets.CIFAR100(root=".", train=False, download=True).targets
+            dataset_train = datasets.CIFAR100(root=".", train=True, download=True)
+            dataset_test = datasets.CIFAR100(root=".", train=False, download=True)
+            self.x_train = dataset_train.data
+            self.y_train = dataset_train.targets
+            self.x_test = dataset_test.data
+            self.y_test = dataset_test.targets
 
             self.x_test = np.mean(self.x_test, axis=3).astype(np.uint8)
 
             #Remove color channel from data
             self.x_train = np.mean(self.x_train, axis=3).astype(np.uint8)
 
-            selected_classes = np.random.choice(np.max(self.y_train), 20, replace=False)
+            selected_classes = np.random.choice(np.max(self.y_train), CLASSES, replace=False)
 
             self.data = self.x_train[np.isin(self.y_train, selected_classes)]
             self.data_test = self.x_test[np.isin(self.y_test, selected_classes)]
@@ -44,10 +47,6 @@ def main():
 
             self.targets = np.array([np.where(selected_classes == i)[0][0] for i in self.targets])
             self.targets_test = np.array([np.where(selected_classes == i)[0][0] for i in self.targets_test])
-
-
-            self.class_names = datasets.CIFAR100(root=".", train=True, download=True).classes
-            self.class_names = [self.class_names[i] for i in selected_classes]
 
             self.x_train = torch.tensor(self.data).float()
             self.x_train = self.x_train.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3)
@@ -118,6 +117,8 @@ def main():
         [make_env(f"{args.exp_name}", args.seed + i, i, dataset, args.capture_video, run_name, args.video_path) for i in range(args.num_envs)]
     )
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
+
+    envs.single_action_space.n = CLASSES
 
     try:
         network_class = getattr(network, args.architecture)
