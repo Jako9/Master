@@ -414,17 +414,17 @@ class ResNet18(Plastic):
     def _forward(self, x, global_step):
         return self.model(x)
     
-from spikingjelly.clock_driven import layer
+"""from spikingjelly.clock_driven import layer
 from spikingjelly.cext import neuron as cext_neuron
     
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
-    """3x3 convolution with padding"""
+    #3x3 convolution with padding
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
                      padding=dilation, groups=groups, bias=False, dilation=dilation)
 
 
 def conv1x1(in_planes, out_planes, stride=1):
-    """1x1 convolution"""
+    #1x1 convolution
     return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
 
@@ -579,5 +579,5 @@ class ResNet18SNN(Plastic):
         return self.fc(x.mean(dim=0))
 
     def forward(self, x):
-        return self._forward_impl(x)
+        return self._forward_impl(x)"""
 

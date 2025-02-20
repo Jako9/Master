@@ -1,4 +1,4 @@
-from ..base_network import ResNet18SNN
+"""from ..base_network import ResNet18SNN
 import torch
 
 class Resnet18SNN_Reset_Network(ResNet18SNN):
@@ -15,4 +15,4 @@ class Resnet18SNN_Reset_Network(ResNet18SNN):
             adjusted_params_dict = {k.replace("_orig_mod.", ""): v for k, v in loaded_params_dict.items()}
             loaded_params_dict = adjusted_params_dict
 
-        self.load_state_dict(loaded_params_dict)
+        self.load_state_dict(loaded_params_dict)"""
