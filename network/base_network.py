@@ -376,8 +376,8 @@ class ResNet20(Plastic):
         super().__init__(*args, **kwargs)
         self.in_planes = 16
 
-        self.conv1 = nn.Conv2d(4, 16, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(16)
+        self.conv1 = nn.Conv2d(4, self.in_planes, kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(self.in_planes)
         self.layer1 = self._make_layer(BasicBlock, 16, 3, stride=1)
         self.layer2 = self._make_layer(BasicBlock, 32, 3, stride=2)
         self.layer3 = self._make_layer(BasicBlock, 64, 3, stride=2)
@@ -413,6 +413,8 @@ class ResNet18(Plastic):
         self.model.conv1 = nn.Conv2d(4, 64, kernel_size=7, stride=2, padding=3, bias=False)
 
     def _forward(self, x, global_step):
+        #adjust x to not be (batch, 4, 84, 84) but (batch, 4, 224, 224)
+        x = F.interpolate(x, size=(224, 224), mode='bilinear')
         return self.model(x)
     
 """from spikingjelly.clock_driven import layer
