@@ -1,5 +1,5 @@
 import torch.nn as nn
-from ..base_network import Large_DNN
+from network.large_dnn.base import Large_DNN
 
 class Layer_Norm(Large_DNN):
     def __init__(self, env, *args, **kwargs):

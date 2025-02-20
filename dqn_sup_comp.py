@@ -18,8 +18,15 @@ import network
 from network import Plastic
 from utils import parse_args, Linear_schedule, Exponential_schedule, process_infos, log, add_log, StepwiseConstantLR
 from environments import Concept_Drift_Env, make_env, drifts, MnistDataset, Cifar100Dataset, CompositeDataset
+from network.base_network import build_networks
 
 def main(): 
+
+    networks = build_networks()
+
+    for network_name, _ in networks.items():
+        print(f"Registering Network: {network_name}")
+
     EVAL = False
     CLASSES = 20
     cfg = parse_args().config
@@ -66,7 +73,7 @@ def main():
     # Dynamically register all classes in environments.drifts that inherit from Concept_Drift_Env
     for name, obj in inspect.getmembers(drifts, inspect.isclass):
         if issubclass(obj, Concept_Drift_Env) and obj is not Concept_Drift_Env:
-            print(f"Registering {name}...")
+            print(f"Registering Environment: {name}")
             gym.register(id=f"{name.lower()}_custom-v0", entry_point=f"environments.drifts:{name}")
 
     try:
@@ -113,10 +120,11 @@ def main():
 
     envs.single_action_space.n = CLASSES
 
-    try:
-        network_class = getattr(network, args.architecture)
-    except AttributeError:
+    if args.architecture not in networks.keys():
         raise ValueError(f"Network '{args.architecture}' not found")
+    network_class = networks[args.architecture]
+    
+        
     
     cache_folder = f"runs/.tmp_{run_name.replace('/', '_')}"
     import os

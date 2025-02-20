@@ -1,7 +1,9 @@
-"""from ..base_network import ResNet18SNN
-import torch
+class Rigid():
+    def __init__(self, env, *args, **kwargs):
+        super().__init__(env, *args, **kwargs)
 
-class Resnet18SNN_Reset_Network(ResNet18SNN):
+import torch
+class Reset_Network():
     def __init__(self, env, *args, **kwargs):
         super().__init__(env, *args, **kwargs)
         self.cache_folder = kwargs["cache_folder"]
@@ -15,4 +17,4 @@ class Resnet18SNN_Reset_Network(ResNet18SNN):
             adjusted_params_dict = {k.replace("_orig_mod.", ""): v for k, v in loaded_params_dict.items()}
             loaded_params_dict = adjusted_params_dict
 
-        self.load_state_dict(loaded_params_dict)"""
+        self.load_state_dict(loaded_params_dict)

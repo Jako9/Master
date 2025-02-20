@@ -1,4 +1,4 @@
-from ..base_network import Large_SNN
+from network.large_snn.base import Large_SNN
 import torch
 from snntorch import spikegen
 from utils import add_log
