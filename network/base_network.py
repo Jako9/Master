@@ -410,6 +410,7 @@ class ResNet18(Plastic):
         super().__init__(*args, **kwargs)
         self.model = self.resnet18(pretrained=False)
         self.model.fc = nn.Linear(512, env.single_action_space.n)
+        self.conv1 = nn.Conv2d(4, 64, kernel_size=7, stride=2, padding=3, bias=False)
 
     def _forward(self, x, global_step):
         return self.model(x)
