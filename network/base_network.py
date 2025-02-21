@@ -6,19 +6,19 @@ import os
 import importlib.util
 from network.generic_modifiers import *
 
-"""
-Abstract class for all networks.
-This class provides an interface for hooking on different levels on the training loop.
 
-To implement the fitting plasticity method just override the method corresponding to the correct hook-level.
-Also implement the _forward method which is the forward pass of the network.
-
-1) every_init: This method is called once at the beginning of the training loop.
-2) every_drift: This method is called after every drift.
-3) every_step: This method is called after every step in the environment.
-"""
 class Plastic(ABC, nn.Module):
+    """
+    Abstract class for all networks.
+    This class provides an interface for hooking on different levels on the training loop.
 
+    To implement the fitting plasticity method just override the method corresponding to the correct hook-level.
+    Also implement the _forward method which is the forward pass of the network.
+
+    1) every_init: This method is called once at the beginning of the training loop.
+    2) every_drift: This method is called after every drift.
+    3) every_step: This method is called after every step in the environment.
+    """
     def __init__(self, total_steps, total_drifts, track, *args, **kwargs):
         super().__init__()
         self.track = track

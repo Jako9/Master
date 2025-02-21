@@ -28,6 +28,7 @@ def main():
         print(f"Registering Network: {network_name}")
 
     EVAL = False
+    NUM_DATASETS = 20
     CLASSES = 20
     cfg = parse_args().config
 
@@ -158,10 +159,7 @@ def main():
         print(f"OS '{os_name}' or GPU CUDA Capability '{cuda_version}' not supported for model compilation") if args.use_compile else print("Not using Compiled Model")
 
     from torchvision import datasets
-    all_datasets = []
-    for _ in range(20):
-        all_datasets.append(Cifar10())
-
+    all_datasets = [Cifar10() for _ in range(NUM_DATASETS)]
     #Build dataloaders
     from torch.utils.data import DataLoader, TensorDataset
     import torch.nn as nn
@@ -237,7 +235,6 @@ def main():
                     add_log("charts/SPS", int(global_step / (time.time() - start_time)))
                     add_log("charts/learning_rate", scheduler.get_lr()[0])
                     add_log("charts/concept_drift", concept_drift)
-
                 optimizer.zero_grad()
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)

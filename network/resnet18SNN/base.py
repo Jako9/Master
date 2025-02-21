@@ -1,169 +1,283 @@
-"""from spikingjelly.clock_driven import layer
-from spikingjelly.cext import neuron as cext_neuron
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torchvision import transforms
 from network.base_network import Plastic
-from torch import nn
-    
-def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
-    #3x3 convolution with padding
-    return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
-                     padding=dilation, groups=groups, bias=False, dilation=dilation)
 
 
-def conv1x1(in_planes, out_planes, stride=1):
-    #1x1 convolution
-    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
+class SurrogateBPFunction(torch.autograd.Function):
 
-
-class BasicBlock_SNN(nn.Module):
-    expansion = 1
-
-    def __init__(self, inplanes, planes, stride=1, downsample=None, groups=1,
-                 base_width=64, dilation=1, norm_layer=None, connect_f=None):
-        super(BasicBlock_SNN, self).__init__()
-        self.connect_f = connect_f
-        if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
-        if groups != 1 or base_width != 64:
-            raise ValueError('SpikingBasicBlock only supports groups=1 and base_width=64')
-        if dilation > 1:
-            raise NotImplementedError("Dilation > 1 not supported in SpikingBasicBlock")
-
-        self.conv1 = layer.SeqToANNContainer(
-            conv3x3(inplanes, planes, stride),
-            norm_layer(planes)
-        )
-        self.sn1 = cext_neuron.MultiStepIFNode(detach_reset=True)
-
-        self.conv2 = layer.SeqToANNContainer(
-            conv3x3(planes, planes),
-            norm_layer(planes)
-        )
-        self.downsample = downsample
-        self.stride = stride
-        self.sn2 = cext_neuron.MultiStepIFNode(detach_reset=True)
-
-    def forward(self, x):
-        identity = x
-
-        out = self.sn1(self.conv1(x))
-
-        out = self.sn2(self.conv2(out))
-
-        if self.downsample is not None:
-            identity = self.downsample(x)
-
-        if self.connect_f == 'ADD':
-            out += identity
-        elif self.connect_f == 'AND':
-            out *= identity
-        elif self.connect_f == 'IAND':
-            out = identity * (1. - out)
-        else:
-            raise NotImplementedError(self.connect_f)
-
+    @staticmethod
+    def forward(ctx, input):
+        ctx.save_for_backward(input)
+        out = torch.zeros_like(input).cuda()
+        out[input > 0] = 1.0
         return out
 
-def zero_init_blocks(net: nn.Module, connect_f: str):
-    for m in net.modules():
-        nn.init.constant_(m.conv2.module[1].weight, 0)
-        if connect_f == 'AND':
-            nn.init.constant_(m.conv2.module[1].bias, 1)
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, = ctx.saved_tensors
+        grad_input = grad_output.clone()
+        grad = grad_input * 0.3 * F.threshold(1.0 - torch.abs(input), 0, 0)
+        return grad
+
+
+def poisson_gen(inp, rescale_fac=2.0):
+    rand_inp = torch.rand_like(inp).cuda()
+    return torch.mul(torch.le(rand_inp * rescale_fac, torch.abs(inp)).float(), torch.sign(inp))
 
 
 class ResNet18SNN(Plastic):
-
     def __init__(self, env, *args, **kwargs):
-        super(ResNet18SNN, self).__init__()
-        zero_init_residual=False
-        replace_stride_with_dilation=None
-        norm_layer=None
-        layers = [2, 2, 2, 2]
-        self.T = 4
-        self.connect_f = "ADD"
-        if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
-        self._norm_layer = norm_layer
+        super().__init__(*args, **kwargs)
 
-        self.inplanes = 64
-        self.dilation = 1
-        if replace_stride_with_dilation is None:
-            replace_stride_with_dilation = [False, False, False]
-        if len(replace_stride_with_dilation) != 3:
-            raise ValueError("replace_stride_with_dilation should be None "
-                             "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
-        self.groups = 1
-        self.base_width = 64
-        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
-                               bias=False)
-        self.bn1 = norm_layer(self.inplanes)
+        self.n = 6
+        self.img_size = 84
+        self.num_cls = env.single_action_space.n
+        self.num_steps = 10
+        self.spike_fn = SurrogateBPFunction.apply
+        self.leak_mem = 0.8744
+        self.batch_num = self.num_steps
+        self.poisson_gen = False
+        self.boost = False
 
+        affine_flag = True
+        bias_flag = False
+        self.nFilters = 32
 
-        self.sn1 = cext_neuron.MultiStepIFNode(detach_reset=True)
-        self.maxpool = layer.SeqToANNContainer(nn.MaxPool2d(kernel_size=3, stride=2, padding=1))
+        self.conv1 = nn.Conv2d(4, self.nFilters, kernel_size=3, stride=1, padding=1, bias=bias_flag)
+        self.bntt1 = nn.ModuleList(
+            [nn.BatchNorm2d(self.nFilters, eps=1e-4, momentum=0.1, affine=affine_flag) for i in range(self.batch_num)])
 
-        self.layer1 = self._make_layer(BasicBlock_SNN, 64, layers[0], connect_f=self.connect_f)
-        self.layer2 = self._make_layer(BasicBlock_SNN, 128, layers[1], stride=2,
-                                       dilate=replace_stride_with_dilation[0], connect_f=self.connect_f)
-        self.layer3 = self._make_layer(BasicBlock_SNN, 256, layers[2], stride=2,
-                                       dilate=replace_stride_with_dilation[1], connect_f=self.connect_f)
-        self.layer4 = self._make_layer(BasicBlock_SNN, 512, layers[3], stride=2,
-                                       dilate=replace_stride_with_dilation[2], connect_f=self.connect_f)
-        self.avgpool = layer.SeqToANNContainer(nn.AdaptiveAvgPool2d((1, 1)))
-        self.fc = nn.Linear(512 * BasicBlock_SNN.expansion, env.single_action_space.n)
+        self.conv_list = nn.ModuleList([self.conv1])
+        self.bntt_list = nn.ModuleList([self.bntt1])
 
+        for block in range(3):
+            for layer in range(2*self.n):
+                if block is not 0 and layer == 0:
+                    stride = 2
+                    prev_nFilters = -1
+                else:
+                    stride = 1
+                    prev_nFilters = 0
+                self.conv_list.append(nn.Conv2d(self.nFilters*(2**(block + prev_nFilters)), self.nFilters*(2**block), kernel_size=3, stride=stride, padding=1, bias=bias_flag))
+                self.bntt_list.append(nn.ModuleList(
+                    [nn.BatchNorm2d(self.nFilters*(2**block), eps=1e-4, momentum=0.1, affine=affine_flag) for i in
+                     range(self.batch_num)]))
+
+        self.conv_resize_1 = nn.Conv2d(self.nFilters, self.nFilters * 2, kernel_size=1, stride=2, padding=0,
+                                       bias=bias_flag)
+        self.resize_bn_1 = nn.ModuleList(
+                    [nn.BatchNorm2d(self.nFilters*2, eps=1e-4, momentum=0.1, affine=affine_flag) for i in
+                     range(self.batch_num)])
+        self.conv_resize_2 = nn.Conv2d(self.nFilters * 2, self.nFilters * 4, kernel_size=1, stride=2, padding=0,
+                                       bias=bias_flag)
+        self.resize_bn_2 = nn.ModuleList(
+                    [nn.BatchNorm2d(self.nFilters*4, eps=1e-4, momentum=0.1, affine=affine_flag) for i in
+                     range(self.batch_num)])
+
+        self.pool2 = nn.AdaptiveAvgPool2d((1,1))
+
+        if self.boost:
+            self.fc = nn.Linear(self.nFilters * 4, self.num_cls * 10, bias=bias_flag)
+        else:
+            self.fc = nn.Linear(self.nFilters*4, self.num_cls, bias=bias_flag)
+
+        self.conv1x1_list = nn.ModuleList([self.conv_resize_1, self.conv_resize_2])
+
+        self.bn_conv1x1_list = nn.ModuleList([self.resize_bn_1,self.resize_bn_2])
+
+        # Turn off bias of BNTT
+        for bn_temp in self.bntt_list:
+            bn_temp.bias = None
+
+        # Initialize the firing thresholds of all the layers
         for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
+            if (isinstance(m, nn.Conv2d)):
+                m.threshold = 1.0
+                nn.init.xavier_uniform_(m.weight, gain=2)
+            elif (isinstance(m, nn.Linear)):
+                m.threshold = 1.0
+                nn.init.xavier_uniform_(m.weight, gain=2)
 
-        if zero_init_residual:
-            zero_init_blocks(self, self.connect_f)
+    def _forward(self, inp, total_step):
 
-    def _make_layer(self, block, planes, blocks, stride=1, dilate=False, connect_f=None):
-        norm_layer = self._norm_layer
-        downsample = None
-        previous_dilation = self.dilation
-        if dilate:
-            self.dilation *= stride
-            stride = 1
-        if stride != 1 or self.inplanes != planes * block.expansion:
-            downsample = nn.Sequential(
-                layer.SeqToANNContainer(
-                    conv1x1(self.inplanes, planes * block.expansion, stride),
-                    norm_layer(planes * block.expansion),
-                ),
-                cext_neuron.MultiStepIFNode(detach_reset=True)
-            )
+        batch_size = inp.size(0)
 
-        layers = []
-        layers.append(block(self.inplanes, planes, stride, downsample, self.groups,
-                            self.base_width, previous_dilation, norm_layer, connect_f))
-        self.inplanes = planes * block.expansion
-        for _ in range(1, blocks):
-            layers.append(block(self.inplanes, planes, groups=self.groups,
-                                base_width=self.base_width, dilation=self.dilation,
-                                norm_layer=norm_layer, connect_f=connect_f))
+        mem_conv_list = [torch.zeros(batch_size, self.nFilters, self.img_size, self.img_size).cuda()]
 
-        return nn.Sequential(*layers)
+        for block in range(3):
+            for layer in range(2*self.n):
+                mem_conv_list.append(torch.zeros(batch_size, self.nFilters*(2**block), self.img_size // 2**block,
+                                                 self.img_size // 2**block).cuda())
 
-    def _forward_impl(self, x):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x.unsqueeze_(0)
-        x = x.repeat(self.T, 1, 1, 1, 1)
-        x = self.sn1(x)
-        x = self.maxpool(x)
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
+        mem_fc = torch.zeros(batch_size, self.num_cls).cuda()
 
-        x = self.avgpool(x)
-        x = torch.flatten(x, 2)
-        return self.fc(x.mean(dim=0))
+        for t in range(self.num_steps):
+            if self.poisson_gen:
+                spike_inp = poisson_gen(inp)
+                out_prev = spike_inp
+            else:
+                out_prev = inp
 
-    def forward(self, x):
-        return self._forward_impl(x)"""
+            index_1x1 = 0
+            for i in range(len(self.conv_list)):
+                mem_conv_list[i] = self.leak_mem * mem_conv_list[i] + self.bntt_list[i][t](self.conv_list[i](out_prev))
+                mem_thr = (mem_conv_list[i] / self.conv_list[
+                    i].threshold) - 1.0  # Positive values have surpassed the threshold
+                out = self.spike_fn(mem_thr)
 
+                if i>0 and i%2 == 0:  # Add skip conn spikes to the current output spikes
+                    if i == 2 + 2 * self.n or i == 2 + 4 * self.n:  # Beggining of block 2 and 3 downsize
+                        skip = self.bn_conv1x1_list[index_1x1][t](self.conv1x1_list[index_1x1](skip))  # Connections guided by 1x1 conv instead of 1 to 1 correspondance
+                        index_1x1 += 1
+                    out = out + skip
+                    skip = out.clone()
+                elif i == 0:
+                    skip = out.clone()
+
+                rst = torch.zeros_like(mem_conv_list[i]).cuda()
+                rst[mem_thr > 0] = self.conv_list[i].threshold  # Matrix of 0s with Th in activated cells
+                mem_conv_list[i] = mem_conv_list[i] - rst  # Reset by subtraction
+                out_prev = out.clone()
+
+                if i == len(self.conv_list)-1:
+                    out = self.pool2(out_prev)
+                    out_prev = out.clone()
+
+            out_prev = out_prev.reshape(batch_size, -1)
+
+            #  Accumulate voltage in the last layer
+            if self.boost:
+                mem_fc = mem_fc + self.boost(self.fc(out_prev).unsqueeze(1)).squeeze(1)
+            else:
+                mem_fc = mem_fc + self.fc(out_prev)
+
+        out_voltage = mem_fc / self.num_steps
+
+        return out_voltage
+
+
+class SResnetNM(nn.Module):
+    def __init__(self, n, nFilters, num_steps, leak_mem=0.95, img_size=32,  num_cls=10):
+        super(SResnetNM, self).__init__()
+
+        self.n = n
+        self.img_size = int(img_size/2)
+        self.num_cls = num_cls
+        self.num_steps = num_steps
+        self.spike_fn = SurrogateBPFunction.apply
+        self.leak_mem = leak_mem
+        self.batch_num = self.num_steps
+
+        print(">>>>>>>>>>>>>>>>>>> S-ResNet NM >>>>>>>>>>>>>>>>>>>>>>")
+
+        affine_flag = True
+        bias_flag = False
+        self.nFilters = nFilters
+
+        self.conv1 = nn.Conv2d(2, self.nFilters, kernel_size=3, stride=2, padding=1, bias=bias_flag)
+        self.bntt1 = nn.ModuleList(
+            [nn.BatchNorm2d(self.nFilters, eps=1e-4, momentum=0.1, affine=affine_flag) for i in range(self.batch_num)])
+
+        self.conv_list = nn.ModuleList([self.conv1])
+        self.bntt_list = nn.ModuleList([self.bntt1])
+
+        for block in range(3):
+            for layer in range(2*n):
+                if block is not 0 and layer == 0:
+                    stride = 2
+                    prev_nFilters = -1
+                else:
+                    stride = 1
+                    prev_nFilters = 0
+                self.conv_list.append(nn.Conv2d(self.nFilters*(2**(block + prev_nFilters)), self.nFilters*(2**block), kernel_size=3, stride=stride, padding=1, bias=bias_flag))
+                self.bntt_list.append(nn.ModuleList(
+                    [nn.BatchNorm2d(self.nFilters*(2**block), eps=1e-4, momentum=0.1, affine=affine_flag) for i in
+                     range(self.batch_num)]))
+
+        self.conv_resize_1 = nn.Conv2d(self.nFilters, self.nFilters * 2, kernel_size=1, stride=2, padding=0,
+                                       bias=bias_flag)
+        self.resize_bn_1 = nn.ModuleList(
+                    [nn.BatchNorm2d(self.nFilters*2, eps=1e-4, momentum=0.1, affine=affine_flag) for i in
+                     range(self.batch_num)])
+        self.conv_resize_2 = nn.Conv2d(self.nFilters * 2, self.nFilters * 4, kernel_size=1, stride=2, padding=0,
+                                       bias=bias_flag)
+        self.resize_bn_2 = nn.ModuleList(
+                    [nn.BatchNorm2d(self.nFilters*4, eps=1e-4, momentum=0.1, affine=affine_flag) for i in
+                     range(self.batch_num)])
+
+        self.pool2 = nn.AdaptiveAvgPool2d((1, 1))
+
+        self.fc = nn.Linear(self.nFilters * 4, self.num_cls, bias=bias_flag)
+
+        self.conv1x1_list = nn.ModuleList([self.conv_resize_1, self.conv_resize_2])
+
+        self.bn_conv1x1_list = nn.ModuleList([self.resize_bn_1, self.resize_bn_2])
+
+        # Turn off bias of BNTT
+        for bn_temp in self.bntt_list:
+            bn_temp.bias = None
+
+        # Initialize the firing thresholds of all the layers
+        for m in self.modules():
+            if (isinstance(m, nn.Conv2d)):
+                m.threshold = 1.0
+                nn.init.xavier_uniform_(m.weight, gain=2)
+            elif (isinstance(m, nn.Linear)):
+                m.threshold = 1.0
+                nn.init.xavier_uniform_(m.weight, gain=2)
+
+    def forward(self, inp):
+
+        inp = inp.permute(1, 0, 2, 3, 4)  # changes to: [T, N, 2, *, *] T=timesteps, N=batch_size
+
+        batch_size = inp.size(1)
+
+        mem_conv_list = [torch.zeros(batch_size, self.nFilters, self.img_size, self.img_size).cuda()]
+
+        for block in range(3):
+            for layer in range(2*self.n):
+                mem_conv_list.append(torch.zeros(batch_size, self.nFilters*(2**block), self.img_size // 2**block,
+                                                 self.img_size // 2**block).cuda())
+
+        mem_fc = torch.zeros(batch_size, self.num_cls).cuda()
+
+        for t in range(inp.size(0)):
+
+            out_prev = inp[t,:]
+            out_prev = transforms.Resize([64,64])(out_prev)
+
+            index_1x1 = 0
+            for i in range(len(self.conv_list)):
+                mem_conv_list[i] = self.leak_mem * mem_conv_list[i] + self.bntt_list[i][t](self.conv_list[i](out_prev))
+                mem_thr = (mem_conv_list[i] / self.conv_list[
+                    i].threshold) - 1.0  # Positive values have surpassed the threshold
+                out = self.spike_fn(mem_thr)
+
+                if i>0 and i%2 == 0:  # Add skip conn spikes to the current output spikes
+                    if i == 2 + 2 * self.n or i == 2 + 4 * self.n:  # Beggining of block 2 and 3 downsize
+                        skip = self.bn_conv1x1_list[index_1x1][t](self.conv1x1_list[index_1x1](skip))  # Connections guided by 1x1 conv instead of 1 to 1 correspondance
+                        index_1x1 += 1
+                    out = out + skip
+                    skip = out.clone()
+                elif i == 0:
+                    skip = out.clone()
+
+                rst = torch.zeros_like(mem_conv_list[i]).cuda()
+                rst[mem_thr > 0] = self.conv_list[i].threshold  # Matrix of 0s with Th in activated cells
+                mem_conv_list[i] = mem_conv_list[i] - rst  #  Reset by subtraction
+                out_prev = out.clone()
+
+                if i == len(self.conv_list) - 1:
+                    out = self.pool2(out_prev)
+                    out_prev = out.clone()
+
+            out_prev = out_prev.reshape(batch_size, -1)
+
+            #  Accumulate voltage in the last layer
+            mem_fc = mem_fc + self.fc(out_prev)
+
+        out_voltage = mem_fc / self.num_steps
+
+        return out_voltage
