@@ -31,7 +31,7 @@ class ResNet18SNN(Plastic):
     def __init__(self, env, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.n = 6
+        self.n = 3
         self.img_size = 84
         self.num_cls = env.single_action_space.n
         self.num_steps = 10
