@@ -2,7 +2,7 @@ import torch.nn as nn
 from network.large_dnn.base import Large_DNN
 import numpy as np
 
-class Plasticity_Injection(Large_DNN):
+class Large_DNN_Plasticity_Injection(Large_DNN):
     def __init__(self, env, *args, **kwargs):
         super().__init__(env, *args, **kwargs)
 
