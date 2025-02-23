@@ -27,7 +27,7 @@ def poisson_gen(inp, rescale_fac=2.0):
     return torch.mul(torch.le(rand_inp * rescale_fac, torch.abs(inp)).float(), torch.sign(inp))
 
 
-class ResNet18SNN(Plastic):
+class ResNet20SNN(Plastic):
     def __init__(self, env, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
