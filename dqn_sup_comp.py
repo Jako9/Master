@@ -38,7 +38,6 @@ def main():
             
             transform_train = transforms.Compose([
                 transforms.ToTensor(),
-                transforms.Resize((224, 224)),
                 transforms.Lambda(lambda x: x.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3).squeeze(0)),
                 transforms.RandomHorizontalFlip(),
                 transforms.RandomCrop(224, padding=4),
@@ -46,7 +45,6 @@ def main():
             ])
             transform_test = transforms.Compose([
                 transforms.ToTensor(),
-                transforms.Resize((224, 224)),
                 transforms.Lambda(lambda x: x.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3).squeeze(0))
             ])
             self.dataset_train = datasets.CIFAR100(root=".", train=True, download=True, transform=transform_train)
