@@ -29,7 +29,7 @@ def main():
         print(f"Registering Network: {network_name}")
 
     EVAL = False
-    NUM_DATASETS = 20
+    NUM_DATASETS = 1
     CLASSES = 20
     cfg = parse_args().config
 
@@ -37,43 +37,44 @@ def main():
         def __init__(self):
             
             transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Resize((224, 224)),
+                transforms.Lambda(lambda x: x.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3).squeeze(0)),
                 transforms.RandomHorizontalFlip(),
                 transforms.RandomCrop(224, padding=4),
                 transforms.RandomRotation(15),
-                transforms.ToTensor()
             ])
-            dataset_train = datasets.CIFAR100(root=".", train=True, download=True, transform=transform)
-            dataset_test = datasets.CIFAR100(root=".", train=False, download=True)
-            self.x_train = dataset_train.data
-            self.y_train = dataset_train.targets
-            self.x_test = dataset_test.data
-            self.y_test = dataset_test.targets
+            self.dataset_train = datasets.CIFAR100(root=".", train=True, download=True, transform=transform)
+            self.dataset_test = datasets.CIFAR100(root=".", train=False, download=True)
+            
+            x_train = self.dataset_train.data
+            y_train = self.dataset_train.targets
+            x_test = self.dataset_test.data
+            y_test = self.dataset_test.targets
 
-            self.x_test = np.mean(self.x_test, axis=3).astype(np.uint8)
+            x_test = np.mean(x_test, axis=3).astype(np.uint8)
 
             #Remove color channel from data
-            self.x_train = np.mean(self.x_train, axis=3).astype(np.uint8)
+            x_train = np.mean(x_train, axis=3).astype(np.uint8)
 
-            selected_classes = np.random.choice(np.max(self.y_train), CLASSES, replace=False)
+            selected_classes = np.random.choice(np.max(y_train), CLASSES, replace=False)
 
-            self.data = self.x_train[np.isin(self.y_train, selected_classes)]
-            self.data_test = self.x_test[np.isin(self.y_test, selected_classes)]
-            self.targets = np.array(self.y_train)[np.isin(self.y_train, selected_classes)]
-            self.targets_test = np.array(self.y_test)[np.isin(self.y_test, selected_classes)]
+            data = x_train[np.isin(y_train, selected_classes)]
+            data_test = x_test[np.isin(y_test, selected_classes)]
+            targets = np.array(y_train)[np.isin(y_train, selected_classes)]
+            
+            targets_test = np.array(y_test)[np.isin(y_test, selected_classes)]
 
-            self.targets = np.array([np.where(selected_classes == i)[0][0] for i in self.targets])
-            self.targets_test = np.array([np.where(selected_classes == i)[0][0] for i in self.targets_test])
+            targets = np.array([np.where(selected_classes == i)[0][0] for i in targets])
+            targets_test = np.array([np.where(selected_classes == i)[0][0] for i in targets_test])
 
-            self.x_train = torch.tensor(self.data).float()
-            self.x_train = self.x_train.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3)
-            self.x_train = F.interpolate(self.x_train, size=(224, 224), mode="bilinear", align_corners=False)
-            self.y_train = torch.tensor(self.targets).long()
+            self.dataset_train.data = data
+            self.dataset_train.targets = targets
+
+            self.dataset_test.data = data_test
+            self.dataset_test.targets = targets_test
 
 
-            self.x_test = torch.tensor(self.data_test).float()
-            self.x_test = self.x_test.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3)
-            self.x_test = F.interpolate(self.x_test, size=(224, 224), mode="bilinear", align_corners=False)
-            self.y_test = torch.tensor(self.targets_test).long()
 
     torch.set_float32_matmul_precision("medium")
 
@@ -173,22 +174,16 @@ def main():
 
     for concept_drift in range(args.num_retrains):
 
-        
-        x_samples = all_datasets[concept_drift % len(all_datasets)].x_train
-        y_samples = all_datasets[concept_drift % len(all_datasets)].y_train
+        current_dataset = all_datasets[concept_drift % len(all_datasets)]
+        y_samples = torch.tensor(current_dataset.dataset_train.targets).to(device)
         print(torch.unique(y_samples, return_counts=False))
 
         current_max_class = torch.max(y_samples)
         print(f"Current max class: {current_max_class}")
 
-        x_samples_test = all_datasets[concept_drift % len(all_datasets)].x_test
-        y_samples_test = all_datasets[concept_drift % len(all_datasets)].y_test
+        dataloader = DataLoader(current_dataset.dataset_train, batch_size=args.batch_size, shuffle=True)
 
-        dataset = TensorDataset(x_samples, y_samples)
-        dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
-
-        dataset_test = TensorDataset(x_samples_test, y_samples_test)
-        dataloader_test = DataLoader(dataset_test, batch_size=args.batch_size, shuffle=False)
+        dataloader_test = DataLoader(current_dataset.dataset_test, batch_size=args.batch_size, shuffle=False)
 
         #constant learning rate when args.learning_rate is a float, otherwise use a scedueld learning rate
         if isinstance(args.learning_rate, float):
@@ -225,6 +220,7 @@ def main():
                     break
                 # Move inputs and targets to the same device as the model (if using GPU)
                 inputs, targets = inputs.to(device), targets.to(device)
+
                 outputs = q_network(inputs)
                 #create output mask to only select the first "current_max_class" output neurons
                 mask = torch.zeros_like(outputs, dtype=torch.bool).to(device)
