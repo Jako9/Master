@@ -40,7 +40,7 @@ def main():
                 transforms.ToTensor(),
                 transforms.Lambda(lambda x: x.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3).squeeze(0)),
                 transforms.RandomHorizontalFlip(),
-                transforms.RandomCrop(224, padding=4),
+                transforms.RandomCrop(32, padding=4),
                 transforms.RandomRotation(15),
             ])
             transform_test = transforms.Compose([
