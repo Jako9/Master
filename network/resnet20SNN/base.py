@@ -32,7 +32,7 @@ class ResNet20SNN(Plastic):
         super().__init__(*args, **kwargs)
 
         self.n = 3
-        self.img_size = 84
+        self.img_size = 32
         self.num_cls = env.single_action_space.n
         self.num_steps = 10
         self.spike_fn = SurrogateBPFunction.apply
