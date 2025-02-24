@@ -29,7 +29,7 @@ def main():
         print(f"Registering Network: {network_name}")
 
     EVAL = False
-    NUM_DATASETS = 1
+    NUM_DATASETS = 20
     CLASSES = 20
     cfg = parse_args().config
 
