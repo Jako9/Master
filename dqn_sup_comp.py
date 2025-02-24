@@ -12,6 +12,7 @@ import torch.nn.functional as F
 from torch.cuda.amp import GradScaler, autocast
 import torch.optim as optim
 import wandb
+from torchvision import transforms
 
 
 import network
@@ -34,7 +35,14 @@ def main():
 
     class Cifar10():
         def __init__(self):
-            dataset_train = datasets.CIFAR100(root=".", train=True, download=True)
+            
+            transform = transforms.Compose([
+                transforms.RandomHorizontalFlip(),
+                transforms.RandomCrop(224, padding=4),
+                transforms.RandomRotation(15),
+                transforms.ToTensor()
+            ])
+            dataset_train = datasets.CIFAR100(root=".", train=True, download=True, transform=transform)
             dataset_test = datasets.CIFAR100(root=".", train=False, download=True)
             self.x_train = dataset_train.data
             self.y_train = dataset_train.targets
@@ -58,14 +66,13 @@ def main():
 
             self.x_train = torch.tensor(self.data).float()
             self.x_train = self.x_train.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3)
-            #reshape the image to be (4, x, 32, 32) -> (4, x, 84, 84)
-            self.x_train = F.interpolate(self.x_train, size=(84, 84), mode="bilinear", align_corners=False)
+            self.x_train = F.interpolate(self.x_train, size=(224, 224), mode="bilinear", align_corners=False)
             self.y_train = torch.tensor(self.targets).long()
+
 
             self.x_test = torch.tensor(self.data_test).float()
             self.x_test = self.x_test.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3)
-            #reshape the image to be (4, x, 32, 32) -> (4, x, 84, 84)
-            self.x_test = F.interpolate(self.x_test, size=(84, 84), mode="bilinear", align_corners=False)
+            self.x_test = F.interpolate(self.x_test, size=(224, 224), mode="bilinear", align_corners=False)
             self.y_test = torch.tensor(self.targets_test).long()
 
     torch.set_float32_matmul_precision("medium")
