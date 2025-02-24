@@ -36,7 +36,7 @@ def main():
     class Cifar10():
         def __init__(self):
             
-            transform = transforms.Compose([
+            transform_train = transforms.Compose([
                 transforms.ToTensor(),
                 transforms.Resize((224, 224)),
                 transforms.Lambda(lambda x: x.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3).squeeze(0)),
@@ -44,18 +44,22 @@ def main():
                 transforms.RandomCrop(224, padding=4),
                 transforms.RandomRotation(15),
             ])
-            self.dataset_train = datasets.CIFAR100(root=".", train=True, download=True, transform=transform)
-            self.dataset_test = datasets.CIFAR100(root=".", train=False, download=True)
+            transform_test = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Resize((224, 224)),
+                transforms.Lambda(lambda x: x.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3).squeeze(0))
+            ])
+            self.dataset_train = datasets.CIFAR100(root=".", train=True, download=True, transform=transform_train)
+            self.dataset_test = datasets.CIFAR100(root=".", train=False, download=True, transform=transform_test)
             
             x_train = self.dataset_train.data
             y_train = self.dataset_train.targets
             x_test = self.dataset_test.data
             y_test = self.dataset_test.targets
 
-            x_test = np.mean(x_test, axis=3).astype(np.uint8)
-
             #Remove color channel from data
             x_train = np.mean(x_train, axis=3).astype(np.uint8)
+            x_test = np.mean(x_test, axis=3).astype(np.uint8)
 
             selected_classes = np.random.choice(np.max(y_train), CLASSES, replace=False)
 
