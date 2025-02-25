@@ -275,9 +275,7 @@ def main():
                 torch.save(q_network.state_dict(), f"{cache_folder}/{args.exp_name}_best.pth")
 
         print(f"END OF CONCEPT DRIFT.. Best accuracy: {best_acc}%")
-        del dataset
         del dataloader
-        del dataset_test
         del dataloader_test
             
         #--After training--
