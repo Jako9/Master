@@ -43,7 +43,7 @@ class ResNet20SNN(Plastic):
 
         affine_flag = True
         bias_flag = False
-        self.nFilters = 32
+        self.nFilters = 16
 
         self.conv1 = nn.Conv2d(4, self.nFilters, kernel_size=3, stride=1, padding=1, bias=bias_flag)
         self.bntt1 = nn.ModuleList(
