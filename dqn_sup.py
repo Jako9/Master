@@ -12,16 +12,66 @@ import torch.nn.functional as F
 from torch.cuda.amp import GradScaler, autocast
 import torch.optim as optim
 import wandb
+from torchvision import transforms
 
 
 import network
 from network import Plastic
 from utils import parse_args, Linear_schedule, Exponential_schedule, process_infos, log, add_log, StepwiseConstantLR
 from environments import Concept_Drift_Env, make_env, drifts, MnistDataset, Cifar100Dataset, CompositeDataset
+from network.base_network import build_networks
 
 def main(): 
+
+    networks = build_networks()
+
+    for network_name, _ in networks.items():
+        print(f"Registering Network: {network_name}")
+
     EVAL = False
+    STEP_SIZE = 5
     cfg = parse_args().config
+
+    class CifarX():
+        def __init__(self, num_classes):
+            
+            transform_train = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Lambda(lambda x: x.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3).squeeze(0))#,
+                #transforms.RandomHorizontalFlip(),
+                #transforms.RandomCrop(32, padding=4),
+                #transforms.RandomRotation(15),
+            ])
+            transform_test = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Lambda(lambda x: x.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3).squeeze(0))
+            ])
+            self.dataset_train = datasets.CIFAR100(root=".", train=True, download=True, transform=transform_train)
+            self.dataset_test = datasets.CIFAR100(root=".", train=False, download=True, transform=transform_test)
+        
+            x_train = self.dataset_train.data
+            y_train = np.array(self.dataset_train.targets)
+
+            x_test = self.dataset_test.data
+            y_test = np.array(self.dataset_test.targets)
+
+            x_train = x_train[y_train < num_classes]
+            y_train = y_train[y_train < num_classes]
+
+            x_test = x_test[y_test < num_classes]
+            y_test = y_test[y_test < num_classes]
+
+            #Remove color channel from data
+            x_train = np.mean(x_train, axis=3).astype(np.uint8)
+            x_test = np.mean(x_test, axis=3).astype(np.uint8)
+
+            self.dataset_train.data = x_train
+            self.dataset_train.targets = y_train.tolist()
+
+            self.dataset_test.data = x_test
+            self.dataset_test.targets = y_test.tolist()
+
+
 
     torch.set_float32_matmul_precision("medium")
 
@@ -29,7 +79,7 @@ def main():
     # Dynamically register all classes in environments.drifts that inherit from Concept_Drift_Env
     for name, obj in inspect.getmembers(drifts, inspect.isclass):
         if issubclass(obj, Concept_Drift_Env) and obj is not Concept_Drift_Env:
-            print(f"Registering {name}...")
+            print(f"Registering Environment: {name}")
             gym.register(id=f"{name.lower()}_custom-v0", entry_point=f"environments.drifts:{name}")
 
     try:
@@ -67,24 +117,20 @@ def main():
 
     print(f"Using device {device}")
 
-    if args.dataset == "mnist":
-        dataset = MnistDataset()
-    elif args.dataset == "cifar100":
-        dataset = Cifar100Dataset()
-    elif args.dataset == "composite":
-        dataset = CompositeDataset()
-    else:
-        raise ValueError(f"Dataset '{args.dataset}' not supported")
+    dataset = MnistDataset()
 
     envs = gym.vector.SyncVectorEnv(
         [make_env(f"{args.exp_name}", args.seed + i, i, dataset, args.capture_video, run_name, args.video_path) for i in range(args.num_envs)]
     )
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
-    try:
-        network_class = getattr(network, args.architecture)
-    except AttributeError:
+    envs.single_action_space.n = 100
+
+    if args.architecture not in networks.keys():
         raise ValueError(f"Network '{args.architecture}' not found")
+    network_class = networks[args.architecture]
+    
+        
     
     cache_folder = f"runs/.tmp_{run_name.replace('/', '_')}"
     import os
@@ -92,6 +138,8 @@ def main():
 
     print(f"Using network '{args.architecture}'")
     q_network = network_class(envs, args.total_timesteps, args.num_retrains, track=args.track, cache_folder=cache_folder).to(device)
+
+    #print(q_network)
 
     assert isinstance(q_network, Plastic), "Network must inherit from Injectable"
 
@@ -116,54 +164,22 @@ def main():
         print(f"OS '{os_name}' or GPU CUDA Capability '{cuda_version}' not supported for model compilation") if args.use_compile else print("Not using Compiled Model")
 
     from torchvision import datasets
-    x_train = datasets.CIFAR100(root=".", train=True, download=True).data
-    y_train = datasets.CIFAR100(root=".", train=True, download=True).targets
-
-    x_train = np.mean(x_train, axis=3)
-
-    x_test = datasets.CIFAR100(root=".", train=False, download=True).data
-    y_test = datasets.CIFAR100(root=".", train=False, download=True).targets
-
-    x_test = np.mean(x_test, axis=3)
-
-    #Build dataloader
+    #Build dataloaders
     from torch.utils.data import DataLoader, TensorDataset
     import torch.nn as nn
 
-    x_train = torch.tensor(x_train).float()
-    x_train = x_train.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3)
-    #reshape the image to be (4, x, 32, 32) -> (4, x, 84, 84)
-    x_train = F.interpolate(x_train, size=(84, 84), mode="bilinear", align_corners=False)
-    y_train = torch.tensor(y_train).long()
-
-    x_test = torch.tensor(x_test).float()
-    x_test = x_test.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3)
-    #reshape the image to be (4, x, 32, 32) -> (4, x, 84, 84)
-    x_test = F.interpolate(x_test, size=(84, 84), mode="bilinear", align_corners=False)
-    y_test = torch.tensor(y_test).long()
-
-    dataset_total = TensorDataset(x_test, y_test)
-    dataloader_total = DataLoader(dataset_total, batch_size=args.batch_size, shuffle=False)
-
     for concept_drift in range(args.num_retrains):
 
-        
-        x_samples = x_train[y_train < (10 * (concept_drift + 1))]
-        y_samples = y_train[y_train < (10 * (concept_drift + 1))]
-        y_samples_sorted = torch.argsort(torch.unique(y_samples, return_counts=True)[1], descending=True)
-        print(y_samples_sorted)
+        current_dataset = CifarX(((concept_drift + 1) * STEP_SIZE))
+        y_samples = torch.tensor(current_dataset.dataset_train.targets).to(device)
+        print(torch.unique(y_samples, return_counts=False))
 
         current_max_class = torch.max(y_samples)
         print(f"Current max class: {current_max_class}")
 
-        x_samples_test = x_test[y_test < (10 * (concept_drift + 1))]
-        y_samples_test = y_test[y_test < (10 * (concept_drift + 1))]
+        dataloader = DataLoader(current_dataset.dataset_train, batch_size=args.batch_size, shuffle=True)
 
-        dataset = TensorDataset(x_samples, y_samples)
-        dataloader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
-
-        dataset_test = TensorDataset(x_samples_test, y_samples_test)
-        dataloader_test = DataLoader(dataset_test, batch_size=args.batch_size, shuffle=False)
+        dataloader_test = DataLoader(current_dataset.dataset_test, batch_size=args.batch_size, shuffle=False)
 
         #constant learning rate when args.learning_rate is a float, otherwise use a scedueld learning rate
         if isinstance(args.learning_rate, float):
@@ -200,6 +216,7 @@ def main():
                     break
                 # Move inputs and targets to the same device as the model (if using GPU)
                 inputs, targets = inputs.to(device), targets.to(device)
+
                 outputs = q_network(inputs)
                 #create output mask to only select the first "current_max_class" output neurons
                 mask = torch.zeros_like(outputs, dtype=torch.bool).to(device)
@@ -217,7 +234,6 @@ def main():
                     add_log("charts/SPS", int(global_step / (time.time() - start_time)))
                     add_log("charts/learning_rate", scheduler.get_lr()[0])
                     add_log("charts/concept_drift", concept_drift)
-
                 optimizer.zero_grad()
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
@@ -228,18 +244,12 @@ def main():
 
 
             accuracy_current = 0
-            accuracy_total = 0
             accuracy_train = 0
             with torch.no_grad():
                 for batch_idx, (inputs, targets) in enumerate(dataloader_test):
                     inputs, targets = inputs.to(device), targets.to(device)
                     outputs = q_network(inputs)
                     accuracy_current += (outputs.argmax(1) == targets).float().mean().item()
-                
-                for batch_idx, (inputs, targets) in enumerate(dataloader_total):
-                    inputs, targets = inputs.to(device), targets.to(device)
-                    outputs = q_network(inputs)
-                    accuracy_total += (outputs.argmax(1) == targets).float().mean().item()
 
                 for batch_idx, (inputs, targets) in enumerate(dataloader):
                     inputs, targets = inputs.to(device), targets.to(device)
@@ -247,23 +257,19 @@ def main():
                     accuracy_train += (outputs.argmax(1) == targets).float().mean().item()
 
             accuracy_current *= (100 / len(dataloader_test))
-            accuracy_total *= (100 / len(dataloader_total))
             accuracy_train *= (100 / len(dataloader))
             add_log("losses/accuracy_current", accuracy_current)
-            add_log("losses/accuracy_total", accuracy_total)
             add_log("losses/accuracy_train", accuracy_train)
             add_log("losses/max_class", current_max_class)
             
-            print(f"Step {global_step}, Loss: {loss}, Current Acc: {accuracy_current}%, Total Acc: {accuracy_total}%")
+            print(f"Step {global_step}, Loss: {loss}, Current Acc: {accuracy_current}%")
             if accuracy_current > best_acc and args.early_stopping:
                 best_acc = accuracy_current
                 print("New best accuracy.. Saving model")
                 torch.save(q_network.state_dict(), f"{cache_folder}/{args.exp_name}_best.pth")
 
         print(f"END OF CONCEPT DRIFT.. Best accuracy: {best_acc}%")
-        del dataset
         del dataloader
-        del dataset_test
         del dataloader_test
             
         #--After training--
