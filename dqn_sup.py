@@ -269,17 +269,16 @@ def main():
                 torch.save(q_network.state_dict(), f"{cache_folder}/{args.exp_name}_best.pth")
 
         print(f"END OF CONCEPT DRIFT.. Best accuracy: {best_acc}%")
-        del dataloader
-        del dataloader_test
-            
-        #--After training--
         if args.save_model:
-            model_path = f"runs/{run_name}/{args.exp_name}.pth"
+            model_path = f"runs/{run_name}/{args.exp_name}_{concept_drift}.pth"
             try:
                 torch.save(q_network.state_dict(), model_path)
                 print(f"model saved to {model_path}")
             except FileNotFoundError:
                 print("Model path not found")
+
+        del dataloader
+        del dataloader_test
 
         if EVAL:#TODO Does not work with current label shuffling
             from dqn_eval import evaluate
