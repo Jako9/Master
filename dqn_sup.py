@@ -37,13 +37,15 @@ def main():
             
             transform_train = transforms.Compose([
                 transforms.ToTensor(),
+                transforms.Resize((84, 84)),
                 transforms.Lambda(lambda x: x.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3).squeeze(0)),
                 transforms.RandomHorizontalFlip(),
-                transforms.RandomCrop(32, padding=4),
+                transforms.RandomCrop(84, padding=4),
                 transforms.RandomRotation(15),
             ])
             transform_test = transforms.Compose([
                 transforms.ToTensor(),
+                transforms.Resize((84, 84)),
                 transforms.Lambda(lambda x: x.unsqueeze(0).repeat(4, 1, 1, 1).permute(1, 0, 2, 3).squeeze(0))
             ])
             self.dataset_train = datasets.CIFAR100(root=".", train=True, download=True, transform=transform_train)
@@ -116,8 +118,11 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     print(f"Using device {device}")
-
-    dataset = MnistDataset()
+    
+    if args.dataset == "CompositeDataset":
+        dataset = CompositeDataset()
+    else:
+        dataset = MnistDataset()
 
     envs = gym.vector.SyncVectorEnv(
         [make_env(f"{args.exp_name}", args.seed + i, i, dataset, args.capture_video, run_name, args.video_path) for i in range(args.num_envs)]
@@ -171,6 +176,7 @@ def main():
     for concept_drift in range(args.num_retrains):
 
         current_dataset = CifarX(((concept_drift + 1) * STEP_SIZE))
+
         y_samples = torch.tensor(current_dataset.dataset_train.targets).to(device)
         print(torch.unique(y_samples, return_counts=False))
 
@@ -270,10 +276,12 @@ def main():
 
         print(f"END OF CONCEPT DRIFT.. Best accuracy: {best_acc}%")
         if args.save_model:
-            model_path = f"runs/{run_name}/{args.exp_name}_{concept_drift}.pth"
+            model_path = f"runs/{run_name.replace('/', '_')}_{args.exp_name}"
             try:
-                torch.save(q_network.state_dict(), model_path)
-                print(f"model saved to {model_path}")
+                os.makedirs(model_path, exist_ok=True)
+                model_name = model_path + f"/drift{concept_drift}.pth"
+                torch.save(q_network.state_dict(), model_name)
+                print(f"model saved to {model_name}")
             except FileNotFoundError:
                 print("Model path not found")
 
