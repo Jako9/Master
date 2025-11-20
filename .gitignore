@@ -194,6 +194,7 @@ pyrightconfig.json
 .env-dqn/
 runs/
 videos/
+video/
 wandb/
 MNIST/
 cifar-100-python/
