@@ -23,6 +23,14 @@ class Shuffle_Labels(Concept_Drift_Env):
     def inject_drift(self):
         np.random.shuffle(self.labels)
 
+    def save_drift(self, path):
+        np.save(path + "_labels.npy", self.labels)
+        np.save(path + "_data.npy", self.data)
+    
+    def load_drift(self, path):
+        self.labels = np.load(path + "_labels.npy")
+        self.data = np.load(path + "_data.npy")
+
 class Rotate_Image(Concept_Drift_Env):
     def __init__(self, dataset, max_episode_steps = 200) -> None:
         super().__init__(dataset, max_episode_steps)

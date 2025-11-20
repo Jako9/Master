@@ -17,6 +17,7 @@ from stable_baselines3.common.buffers import ReplayBuffer
 
 import network
 from network import Plastic
+from network.base_network import build_networks
 from utils import parse_args, Linear_schedule, Exponential_schedule, process_infos, log, add_log, StepwiseConstantLR
 from environments import Concept_Drift_Env, make_env, drifts, MnistDataset, Cifar100Dataset, CompositeDataset
 
@@ -65,6 +66,7 @@ def main():
     torch.backends.cudnn.deterministic = args.torch_deterministic
 
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
+    networks = build_networks()
 
     print(f"Using device {device}")
 
@@ -82,10 +84,9 @@ def main():
     )
     assert isinstance(envs.single_action_space, gym.spaces.Discrete), "only discrete action space is supported"
 
-    try:
-        network_class = getattr(network, args.architecture)
-    except AttributeError:
+    if args.architecture not in networks.keys():
         raise ValueError(f"Network '{args.architecture}' not found")
+    network_class = networks[args.architecture]
     
     cache_folder = f"runs/.tmp_{run_name.replace('/', '_')}"
     import os
@@ -227,13 +228,6 @@ def main():
                 log()
         #--After training--
         rb.reset()
-        if args.save_model:
-            model_path = f"runs/{run_name}/{args.exp_name}.pth"
-            try:
-                torch.save(q_network.state_dict(), model_path)
-                print(f"model saved to {model_path}")
-            except FileNotFoundError:
-                print("Model path not found")
 
         if EVAL:#TODO Does not work with current label shuffling
             from dqn_eval import evaluate
@@ -255,9 +249,21 @@ def main():
                     add_log("charts/episodic_return", episodic_return)
                     log()
 
+        if args.save_model:
+                os.makedirs(f"runs/{run_name}", exist_ok=True)
+                path = f"runs/{run_name}/{args.exp_name}_{concept_drift}"
+                try:
+                    torch.save(q_network.state_dict(), path + ".pth")
+                    #also save current permutations of dataset
+                    if isinstance(envs.envs[0].unwrapped, Concept_Drift_Env):
+                        envs.envs[0].unwrapped.save_drift(path)
+                    print(f"model saved to {path}")
+                except FileNotFoundError:
+                    print("Model path not found")
+
     #--After all concept drifts--
     import shutil
-    shutil.rmtree(cache_folder)
+    #shutil.rmtree(cache_folder)
     envs.close()
     if args.track:
         wandb.finish()
